@@ -1,25 +1,36 @@
 <!-- NEXT-ACTION:START -->
 ## ▶ 지금 할 일 (새 세션은 이 블록부터 — SessionStart 훅이 자동 주입)
 
-- **[확인필요·오늘]** **WAF 차단이 지속되는지** — 08-20 10:01:59에 pvo 문서 요청이 차단됐다
-  (원인: 없는 경로 4개 연속 시도, WP-11 §4-30). 12:00 정기 회차가 정상 완주하면 일시적이다.
-  → `tools/collector/daily.log`의 `daily_done`·`notice_unavailable`
-- **[진행중]** **점유자 표를 PDF 괘선으로 파싱하도록 전환** (WP-11 §4-30에서 방향 확정).
-  좌표만으로 푸는 길은 실측으로 기각했고, 원본 PDF를 정상 경로로 받을 수 있음을 확인했다
-  (`GET /streamdocs/v4/documents/{id}` → `%PDF-1.4`). `opendataloader-pdf`가 병합셀을
-  `row span`으로 정확히 가른다. **다음 단계는 실제 명세서 1건 검증** — 점유자 표가 하나로
-  잡히는가(등기부에서는 표를 과분할했다). 하네스는 준비돼 있다.
-  주의: 문서 취득은 **알려진 엔드포인트 1개만** 호출한다. 경로 탐색 금지.
-  → `tools/collector/src/collector/notice_tenant_parser.py`, `notice_document_client.py`
-- **[대기·결정]** Java 11+ 런타임 도입 여부 — opendataloader는 JAR이라 Java가 필요하다.
-  이 PC는 JDK 21이 있는데도 `java`가 8로 잡히므로 `run_daily.cmd`에 경로 명시가 필요하다.
-- **[확인필요]** 오염 행 재수집 잔여 10행 — notice 3316(창 08-20 개시, 마커 비움 완료)은
-  12:00 회차가 받는지 본다. 나머지: 08-24 개시 3691·3723 / 08-25 개시 3835·3844·4015·4030·4079·3559.
+- **[제일 먼저]** **밤새 회차에서 PDF 경로가 실제로 돌았는지 확인한다.** 08-20 15:42에
+  코드를 넣었고 첫 적용은 **18:00 회차**다. 그 전에 법원이 `ipcheck`만 담긴 빈 응답을 주기
+  시작해(요청 과다, 실측상 3시간 뒤 복구) 회복 여부도 같이 봐야 한다.
+
+  ```
+  # ① 회차가 완주했나 / 빈 응답은 없었나
+  cd tools/collector && grep -a "daily_done\|notice_pdf_failed\|BlockedByCourt" daily.log | tail -20
+
+  # ② PDF 경로가 쌓이고 있나 (018)
+  docker exec auction-db psql -U app -d auction -c     "SELECT tenant_source, count(*) FROM auction_item_notice GROUP BY 1 ORDER BY 2 DESC;"
+  ```
+
+  판정: `PDF_CELLS`가 늘어 있으면 성공. `notice_pdf_failed`가 많으면 폴백만 도는 것이고
+  대개 **Java 경로**다(이 PC는 PATH의 java가 8이다 — `.env`에 `COLLECTOR_JAVA` 필요).
+  `stage_failures>0`이거나 `notice_unavailable`이 크면 아직 법원이 degrade 중이다.
+
+- **[다음]** **재수집을 건다** — 위 확인이 정상일 때만. 열람 창이 열린 명세서가 1,112건이고
+  전부 텍스트 레이어로 읽힌 것이라 임차인 행·사람이 어긋나 있다. `needs_tenants` 조건에
+  "`tenant_source`가 `PDF_CELLS`가 아닌 것"을 더하고 **회차당 상한(~60건)** 과 **기일 임박순
+  정렬**을 둔다. 기일 분포: 08-24 101건 / **08-25 548건** / 08-26 169건 / 08-27 165건.
+  스케줄은 이미 3시간마다(하루 8회)라 상한 60이면 기한 내에 들어온다.
+  → `tools/collector/src/collector/runner.py`(needs_tenants), WP-11 §4-31
+
+- **[확인필요]** 오염 행 잔여 **9행** — 창이 여는 날 `tenant_scanned_at`을 비운다.
+  08-24 개시: notice 3691·3723 / 08-25 개시: 3835·3844·4015·4030·4079·3559.
   회수 불가 1건 notice 2268. → WP-11 §4-29
-- **[대기·사용자]** 정비구역 오버레이 기획 착수 조건 — GATE 3차 CONCERNS. 서울 열린데이터광장
-  인증키·브이월드 계정 발급이 선행이다. → `autopilot/redevelopment-zone-overlay/09-readiness-report-gate3.md`
+
+- **[대기·사용자]** 정비구역 오버레이 착수 조건 — GATE 3차 CONCERNS. 서울 열린데이터광장
+  인증키·브이월드 계정 발급이 선행. → `autopilot/redevelopment-zone-overlay/09-readiness-report-gate3.md`
 - **[대기·사용자]** 실거래가 API 신청 — 승인되면 실부담 시나리오 기준을 감정가 → 시세로 전환.
-  → `apps/api/src/rights-analysis/domain/total-burden.ts`
 <!-- NEXT-ACTION:END -->
 
 <!--
