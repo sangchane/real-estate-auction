@@ -28,8 +28,11 @@
   08-24 개시: notice 3691·3723 / 08-25 개시: 3835·3844·4015·4030·4079·3559.
   회수 불가 1건 notice 2268. → WP-11 §4-29
 
-- **[대기·사용자]** 정비구역 오버레이 착수 조건 — GATE 3차 CONCERNS. 서울 열린데이터광장
-  인증키·브이월드 계정 발급이 선행. → `autopilot/redevelopment-zone-overlay/09-readiness-report-gate3.md`
+- **[대기·사용자]** **구역 레이어 — 인증키 2건 발급이 착수 선행 조건이다.**
+  ① 서울 열린데이터광장 인증키(무료·즉시, data.seoul.go.kr) → 정비구역 **추진단계**(FR-003 P0)
+  ② 브이월드 계정(무료, vworld.kr) → 정비구역 폴리곤(FR-001 P0)·법정동 경계(FR-017 P1, 노후도 조인용)
+  받는 곳·풀리는 것·발급 후 첫 순서 → `autopilot/redevelopment-zone-overlay/11-user-actions.md`
+  기획은 5개 구역(정비구역·모아타운·재정비촉진·가로주택·신통)+노후도로 확장 완료. GATE 3차 CONCERNS.
 - **[대기·사용자]** 실거래가 API 신청 — 승인되면 실부담 시나리오 기준을 감정가 → 시세로 전환.
 <!-- NEXT-ACTION:END -->
 
