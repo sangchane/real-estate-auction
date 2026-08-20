@@ -193,7 +193,23 @@ class PostgresAuctionRepository:
                       )
                     """
                 )
-                return cur.rowcount
+                masked = cur.rowcount
+                # 보관해 둔 표 원문에도 성명이 그대로 들어 있다 — 같은 시점에 지우지 않으면
+                # 위 마스킹이 무의미해진다 (017, NF-03)
+                cur.execute(
+                    """
+                    UPDATE auction_item_notice n
+                    SET tenant_text_region = NULL
+                    FROM auction_item ai
+                    WHERE ai.id = n.auction_item_id
+                      AND n.tenant_text_region IS NOT NULL
+                      AND EXISTS (
+                        SELECT 1 FROM auction_sale_result r
+                        WHERE r.auction_item_id = ai.id AND r.result_code = '015'
+                      )
+                    """
+                )
+                return masked
 
     def count_unmasked_tenant_names(self) -> int:
         """아직 성명이 남아 있는 점유자 행 수 — 감사용."""
@@ -604,6 +620,11 @@ def _upsert_notice(cur: psycopg.Cursor[Any], notice: ItemNotice) -> str:
     return "updated"
 
 
+def _text_region_json(region: tuple[tuple[Any, ...], ...] | None) -> Jsonb | None:
+    """표 영역 원문을 JSONB 값으로 감싼다. 빈 값은 NULL로 둔다 — "못 열었다"와 같게 읽는다."""
+    return Jsonb([list(page) for page in region]) if region else None
+
+
 def _replace_notice_tenants(cur: psycopg.Cursor[Any], notice_id: int, notice: ItemNotice) -> None:
     """점유자 표를 통째로 다시 쓰고 스캔 시각을 남긴다 — 같은 문서를 재파싱해도 행이 늘지 않게 한다.
 
@@ -621,10 +642,19 @@ def _replace_notice_tenants(cur: psycopg.Cursor[Any], notice_id: int, notice: It
             UPDATE auction_item_notice
             SET tenant_scanned_at = now(),
                 tenant_rows_rejected = %s,
-                tenant_table_continued = %s
+                tenant_table_continued = %s,
+                -- 빈 값으로 덮지 않는다. 문서는 열렸는데 표를 못 찾은 회차(쪽 상한·양식 변형)가
+                -- 이미 보관한 원문을 지우면 열람 창이 닫힌 뒤에는 복구할 수 없다 —
+                -- 바로 아래 tenants가 비면 표를 손대지 않는 것과 같은 이유다
+                tenant_text_region = COALESCE(%s, tenant_text_region)
             WHERE id = %s
             """,
-            (notice.tenants_rejected, notice.tenants_continued, notice_id),
+            (
+                notice.tenants_rejected,
+                notice.tenants_continued,
+                _text_region_json(notice.tenant_text_region),
+                notice_id,
+            ),
         )
 
     if not notice.tenants:

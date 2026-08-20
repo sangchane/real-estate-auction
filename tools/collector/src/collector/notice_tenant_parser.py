@@ -172,6 +172,10 @@ class TenantTable:
     tenants: tuple[NoticeTenant, ...]
     continued: bool
     rejected: int = 0
+    # 점유자 표 영역의 원본 라인(쪽별). 파서를 고친 뒤 재수집 없이 다시 파싱하려고 남긴다
+    # (017, WP-11 §4-27·§4-29). 페이지 전체가 아니라 표 영역만 담는다 — 자유서술 3란의
+    # 제3자 실명을 저장하지 않기로 한 결정(A-08, court_parser.ItemNotice)을 지킨다
+    region_lines: tuple[tuple[Any, ...], ...] = ()
 
 
 # 정보출처 정상값 — 이 셋 중 하나가 아니면 행 경계 자체가 잘못 잡힌 것으로 본다
@@ -199,6 +203,7 @@ def parse_tenant_table(pages: list[list[Any]]) -> TenantTable:
     표 머리글을 못 찾으면 빈 결과를 돌려준다 — 양식이 다른 문서에서 엉뚱한 값을 만들지 않는다.
     """
     rows: list[dict[str, str]] = []
+    regions: list[tuple[Any, ...]] = []
     continued = False
 
     for lines in pages:
@@ -206,16 +211,43 @@ def parse_tenant_table(pages: list[list[Any]]) -> TenantTable:
         bounds = _table_bounds(fragments)
         if bounds is None:
             continue
-        top, bottom, has_end_marker = bounds
+        top, bottom, has_end_marker, header_top = bounds
         offset = _column_offset(fragments)
         rows.extend(_rows_in_region(fragments, top=top, bottom=bottom, offset=offset))
+        regions.append(_lines_in_span(lines, top=header_top, bottom=bottom))
         continued = not has_end_marker
 
     parsed = _to_tenants(rows)
     usable = tuple(tenant for tenant in parsed if _is_usable(tenant))
     return TenantTable(
-        tenants=usable, continued=continued, rejected=len(parsed) - len(usable)
+        tenants=usable,
+        continued=continued,
+        rejected=len(parsed) - len(usable),
+        region_lines=tuple(regions),
     )
+
+
+def _lines_in_span(lines: list[Any], *, top: float, bottom: float) -> tuple[Any, ...]:
+    """원본 라인 중 세로 중앙이 [bottom, top] 안에 드는 것만 고른다 (017 보관용).
+
+    조각이 아니라 **원본 라인 객체를 그대로** 남긴다 — 그래야 저장한 값을 parse_tenant_table에
+    다시 넣어 같은 경로로 재파싱할 수 있다. 머리글부터 담으므로 재파싱 때도 표를 찾는다.
+    """
+    kept: list[Any] = []
+    for line in lines:
+        if not isinstance(line, dict):
+            continue
+        rects = line.get("rect")
+        if not isinstance(rects, list):
+            continue
+        centers = [
+            (_number(rect.get("bottom")) + _number(rect.get("top"))) / 2
+            for rect in rects
+            if isinstance(rect, dict)
+        ]
+        if centers and bottom <= sum(centers) / len(centers) <= top:
+            kept.append(line)
+    return tuple(kept)
 
 
 def _fragments(lines: list[Any]) -> list[dict[str, Any]]:
@@ -277,8 +309,12 @@ def _assign_run_centers(entries: list[dict[str, Any]]) -> None:
             member["column_x"] = center
 
 
-def _table_bounds(fragments: list[dict[str, Any]]) -> tuple[float, float, bool] | None:
-    """표 영역의 위/아래 y 경계와, 아래 경계가 명세서의 종료 표시였는지를 돌려준다."""
+def _table_bounds(fragments: list[dict[str, Any]]) -> tuple[float, float, bool, float] | None:
+    """표 영역의 위/아래 y 경계, 아래 경계가 종료 표시였는지, 머리글 맨 위 y를 돌려준다.
+
+    머리글 맨 위는 원문 보관 범위를 정하는 데 쓴다(017) — 재파싱하려면 머리글이 있어야
+    _table_bounds가 표를 다시 찾을 수 있다.
+    """
     lines = _group_lines(fragments)
     header_index = next(
         (
@@ -292,6 +328,7 @@ def _table_bounds(fragments: list[dict[str, Any]]) -> tuple[float, float, bool] 
         return None
 
     # 머리글은 여러 줄로 감싸진다 — 아래로 내려가며 머리글 단어가 계속 나오는 동안 이어붙인다
+    header_top = lines[header_index]["y2"]
     header_bottom = lines[header_index]["y1"]
     for line in lines[header_index + 1 :]:
         if not any(keyword in line["text"] for keyword in _HEADER_KEYWORDS):
@@ -302,8 +339,8 @@ def _table_bounds(fragments: list[dict[str, Any]]) -> tuple[float, float, bool] 
         if line["y2"] < header_bottom and any(
             line["text"].lstrip().startswith(marker) for marker in _TABLE_END_MARKERS
         ):
-            return (header_bottom, line["y2"], True)
-    return (header_bottom, 0.0, False)
+            return (header_bottom, line["y2"], True, header_top)
+    return (header_bottom, 0.0, False, header_top)
 
 
 def _group_lines(fragments: list[dict[str, Any]]) -> list[dict[str, Any]]:

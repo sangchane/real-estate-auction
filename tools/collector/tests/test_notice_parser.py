@@ -150,6 +150,10 @@ def test_item_notice_stores_no_free_text():
         # 표가 다음 쪽으로 이어졌는지 — boolean이라 자유서술 원문이 아니다 (WP-11 §4-26)
         "tenants_continued",
         "bid_date",
+        # 점유자 표 **영역만**의 텍스트 레이어 원문 (017). 자유서술 3란은 표 아래 <비고>부터라
+        # 이 영역에 들어오지 않는다 — 아래 test_tenant_text_region_excludes_free_text가
+        # 실제 문서로 그 경계를 검사한다
+        "tenant_text_region",
     }
 
 

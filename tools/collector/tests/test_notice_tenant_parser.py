@@ -413,3 +413,55 @@ def test_parse_deposit_tranches_only_when_unambiguous(deposit, fixed, expected):
         assert result is None
     else:
         assert [(tr.amount, tr.fixed_date) for tr in result] == expected
+
+
+# --- 표 영역 원문 보관 (017, WP-11 §4-27·§4-29) ---
+
+_TENANT_FIXTURES = [
+    "notice_pdf_texts_page0.json",
+    "notice_pdf_texts_52802_2.json",
+    "notice_pdf_texts_2593_1.json",
+    "notice_pdf_texts_102642_1.json",
+    "notice_pdf_texts_9542_1.json",
+    "notice_pdf_texts_5380_1.json",
+    "notice_pdf_texts_908_1.json",
+]
+
+
+@pytest.mark.parametrize("name", _TENANT_FIXTURES)
+def test_tenant_text_region_reparses_to_same_tenants(name):
+    """보관한 영역 원문만 다시 넣어도 같은 점유자가 나와야 한다.
+
+    이게 017의 존재 이유다 — 열람 창이 닫힌 뒤에도 파서를 고쳐 다시 파싱하려면, 보관한 값이
+    parse_tenant_table의 입력으로 그대로 쓰일 수 있어야 한다 (머리글 포함).
+    """
+    table = parse_tenant_table(_pages(name))
+    assert table.region_lines, "표를 찾았으면 영역 원문도 남아야 한다"
+
+    reparsed = parse_tenant_table([list(page) for page in table.region_lines])
+
+    assert reparsed.tenants == table.tenants
+    assert reparsed.rejected == table.rejected
+
+
+@pytest.mark.parametrize("name", _TENANT_FIXTURES)
+def test_tenant_text_region_excludes_free_text(name):
+    """영역 원문에 자유서술 3란(비고·인수권리·지상권)이 섞이지 않아야 한다 (A-08).
+
+    ItemNotice가 자유서술 원문을 저장하지 않기로 한 결정(006)은 그 란에 신고인·가등기권자
+    실명이 마스킹 없이 실리기 때문이다. 017이 표 영역만 담는다는 것을 실제 문서로 못박는다 —
+    페이지 전체를 담도록 되돌리면 여기서 실패한다.
+    """
+    table = parse_tenant_table(_pages(name))
+    text = "".join(
+        line.get("text", "") for page in table.region_lines for line in page
+    )
+
+    for marker in ("<비고>", "비고란", "지상권", "매수인에게 대항할"):
+        assert marker not in text, f"{marker}가 영역 원문에 들어왔다"
+
+
+def test_tenant_text_region_is_empty_when_table_not_found():
+    """표를 못 찾으면 원문도 남기지 않는다 — 엉뚱한 페이지를 통째로 저장하지 않게."""
+    table = parse_tenant_table([[{"text": "부동산의 표시", "rect": [{"left": 1, "right": 2, "bottom": 3, "top": 4}]}]])
+    assert table.region_lines == ()

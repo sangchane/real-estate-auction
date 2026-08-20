@@ -497,7 +497,7 @@ def _collect_notices_for_rows(
         notice = replace(notice, bid_date=notice_bid_date(row))
 
         if document_reader is not None:
-            tenants, rejected, scanned, continued = _collect_notice_tenants(
+            tenants, rejected, scanned, continued, region = _collect_notice_tenants(
                 run_id=run_id, reader=document_reader, detail_payload=response, case_no=case_no
             )
             notice = replace(
@@ -506,6 +506,7 @@ def _collect_notices_for_rows(
                 tenants_scanned=scanned,
                 tenants_rejected=rejected if scanned else None,
                 tenants_continued=continued if scanned else None,
+                tenant_text_region=region if scanned else None,
             )
             tenant_rows += len(tenants)
             tenant_rejected += rejected
@@ -526,8 +527,9 @@ def _collect_notice_tenants(
     reader: NoticeDocumentReader,
     detail_payload: dict[str, Any],
     case_no: str,
-) -> tuple[tuple[NoticeTenant, ...], int, bool, bool | None]:
-    """명세서 PDF에서 점유자 표를 읽어 (저장할 행, 버린 행 수, 문서를 열었는지, 표가 이어지는지)를 돌려준다.
+) -> tuple[tuple[NoticeTenant, ...], int, bool, bool | None, tuple[tuple[Any, ...], ...]]:
+    """명세서 PDF에서 점유자 표를 읽어 (저장할 행, 버린 행 수, 문서를 열었는지, 표가 이어지는지,
+    표 영역 원문)를 돌려준다.
 
     열람 창(매각기일 1주 전~기일) 밖이면 문서를 열 수 없어 빈 값을 돌려준다 — 기재사항 수집은
     그대로 진행한다. 표가 다음 쪽으로 이어질 때만 쪽을 더 받는다.
@@ -535,18 +537,21 @@ def _collect_notice_tenants(
     세 번째 값은 문서를 열어 파싱까지 끝냈는지다. 표가 비어 있어도(임차인 없는 물건) True라서
     daily가 "다시 열 필요 없음"을 판단할 수 있다.
 
+    다섯 번째 값은 표 영역의 텍스트 레이어 원문이다 — 파서를 고친 뒤 재수집 없이 다시 파싱하려고
+    남긴다 (017). 문서를 못 열었으면 빈 값이다.
+
     네 번째 값은 마지막으로 읽은 쪽에서 표가 아직 이어지고 있었는지다. 쪽 상한
     (NOTICE_TEXT_MAX_PAGES)까지 읽고도 True면 표가 잘렸다는 뜻이라 "행이 없다"를 근거로 쓸 수
     없다. 문서를 못 열었으면 None(모름)이다 (WP-11 §4-26).
     """
     ref = notice_document_ref(detail_payload)
     if ref is None:
-        return ((), 0, False, None)
+        return ((), 0, False, None, ())
 
     session = reader.open_document(ref)
     if session is None:
         logger.info("notice_document_unavailable run_id=%s case=%s", run_id, case_no)
-        return ((), 0, False, None)
+        return ((), 0, False, None, ())
 
     pages: list[list[Any]] = []
     for page in range(NOTICE_TEXT_MAX_PAGES):
@@ -564,7 +569,7 @@ def _collect_notice_tenants(
             case_no,
             table.rejected,
         )
-    return (table.tenants, table.rejected, True, table.continued)
+    return (table.tenants, table.rejected, True, table.continued, table.region_lines)
 
 
 def _search_result_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:

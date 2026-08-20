@@ -358,6 +358,11 @@ def test_postgres_masks_tenant_names_only_for_ended_cases():
                     demanded_distribution_date=None,
                 ),
             ),
+            tenants_scanned=True,
+            # 성명이 그대로 들어 있는 보관 원문 — 마스킹이 이것도 지워야 한다 (017)
+            tenant_text_region=(
+                ({"text": "홍길동", "rect": [{"left": 30, "right": 60, "bottom": 460, "top": 470}]},),
+            ),
         )
 
     ended, open_case = "2022타경101244", "2023타경4722"
@@ -411,6 +416,11 @@ def test_postgres_masks_tenant_names_only_for_ended_cases():
                 "WHERE tenant_name IS NULL"
             )
             assert cur.fetchone() == (50_000_000, date(2020, 1, 1))
+            # 보관 원문에도 성명이 있으므로 같이 지워야 한다 — 아니면 위 마스킹이 무의미하다 (017)
+            cur.execute(
+                "SELECT count(*) FROM auction_item_notice WHERE tenant_text_region IS NOT NULL"
+            )
+            assert cur.fetchone()[0] == 1  # 진행 중 사건 것만 남는다
 
 
 @pytest.mark.skipif(
