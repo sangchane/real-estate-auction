@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from collector.court_client import BlockedByCourtError, CourtRequestError
+from collector.notice_pdf_reader import PdfReadError
 from collector.notice_document_client import NoticeDocumentSession
 from collector.repository import InMemoryNoticeRepository
 from collector.runner import CollectionTarget, build_item_detail_payload, run_notice_collection
@@ -148,6 +149,10 @@ class FakeDocumentReader:
             return None
         return NoticeDocumentSession(streamdocs_id="doc-1", access_token="token-1")
 
+    def fetch_pdf(self, session) -> bytes:
+        # 이 더블은 **텍스트 레이어 폴백 경로**를 검사한다. PDF 경로는 별도 테스트에서 본다.
+        raise PdfReadError("fake reader has no pdf")
+
     def fetch_text_page(self, session, page: int):
         self.pages_read.append(page)
         if page == 0:
@@ -222,3 +227,63 @@ def test_build_item_detail_payload_uses_detail_search_context():
     assert detail["srchInfo"]["sideDvsCd"] == "2"
     assert detail["srchInfo"]["srchRowIndex"] == 3
     assert detail["srchInfo"]["menuNm"] == "물건상세검색"
+
+
+class PdfDocumentReader(FakeDocumentReader):
+    """괘선 PDF를 돌려주는 더블. 실제 명세서로 뜬 셀 격자를 그대로 쓴다."""
+
+    def __init__(self, pdf: bytes = b"%PDF-1.4 fake"):
+        super().__init__()
+        self._pdf = pdf
+
+    def fetch_pdf(self, session) -> bytes:
+        return self._pdf
+
+    def fetch_text_page(self, session, page: int):
+        raise AssertionError("PDF 경로가 성공하면 텍스트 레이어를 부르지 않는다")
+
+
+def test_notice_collection_prefers_the_pdf_table(monkeypatch):
+    """PDF 괘선 경로가 성공하면 그 결과를 쓰고 경로를 기록한다 (018, WP-11 §4-31).
+
+    실측 회귀: 2025타경103032 물건1은 좌표 파서가 임차인 둘을 한 명으로 뭉치며 보증금
+    2억6,955만을 잃었다. 괘선에는 두 행의 경계가 있다.
+    """
+    from collector import runner as runner_module
+
+    cells = json.loads(
+        (DETAIL_FIXTURE.parent / "notice_pdf_cells_103032_1.json").read_text(encoding="utf-8")
+    )
+    monkeypatch.setattr(runner_module, "pdf_to_document", lambda _pdf: cells)
+
+    scan = runner_module._collect_notice_tenants(
+        run_id="run-1",
+        reader=PdfDocumentReader(),
+        detail_payload=json.loads(DETAIL_FIXTURE.read_text(encoding="utf-8")),
+        case_no="2025타경103032",
+    )
+
+    assert scan.source == "PDF_CELLS"
+    assert scan.scanned is True
+    assert len(scan.tenants) == 2
+    assert {tenant.tenant_seq for tenant in scan.tenants} == {1, 2}
+    assert sorted(t.deposit_amount for t in scan.tenants) == [269_550_000, 300_000_000]
+
+
+def test_notice_collection_falls_back_to_the_text_layer(monkeypatch):
+    """PDF를 못 읽으면 텍스트 레이어로 내려간다 — 경로를 기록해 나중에 갈라 볼 수 있게 한다.
+
+    폴백이 없으면 opendataloader·Java 문제 한 번에 그날 명세서를 통째로 잃는다. 명세서는
+    기일이 지나면 다시 못 받는다 (WP-11 §4-3).
+    """
+    from collector import runner as runner_module
+
+    scan = runner_module._collect_notice_tenants(
+        run_id="run-1",
+        reader=FakeDocumentReader(),  # fetch_pdf 가 PdfReadError 를 던진다
+        detail_payload=json.loads(DETAIL_FIXTURE.read_text(encoding="utf-8")),
+        case_no="2024타경1",
+    )
+
+    assert scan.source == "TEXT_LAYER"
+    assert scan.scanned is True

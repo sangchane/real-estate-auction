@@ -154,6 +154,8 @@ def test_item_notice_stores_no_free_text():
         # 이 영역에 들어오지 않는다 — 아래 test_tenant_text_region_excludes_free_text가
         # 실제 문서로 그 경계를 검사한다
         "tenant_text_region",
+        # 어느 경로로 읽었는지 — 'PDF_CELLS'/'TEXT_LAYER' 두 값뿐이라 자유서술 원문이 아니다 (018)
+        "tenant_source",
     }
 
 

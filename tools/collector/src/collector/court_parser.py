@@ -285,6 +285,9 @@ class ItemNotice:
     # 남긴다 (017). 위 A-08 주석대로 **표 영역만** 담는다 — 자유서술 3란은 넣지 않는다.
     # None = 문서를 열지 못해 모름
     tenant_text_region: tuple[tuple[Any, ...], ...] | None = None
+    # 점유자 표를 어느 경로로 읽었는지 (018). 'PDF_CELLS'=PDF 괘선, 'TEXT_LAYER'=좌표 추측.
+    # 두 경로는 정확도가 달라 섞어서 통계를 내면 안 된다. None = 문서를 못 열어 모름
+    tenant_source: str | None = None
 
 
 # 최선순위 설정 원문의 날짜 표기 — "2008.07.09", "2022.1.12.", "2024. 12. 11." 모두 실측된 형태다

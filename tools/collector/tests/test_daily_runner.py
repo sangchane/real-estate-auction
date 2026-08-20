@@ -9,6 +9,7 @@ import pytest
 from collector.__main__ import DAILY_DEFAULT_COURTS, _daily_arg_parser
 from collector.court_client import BlockedByCourtError, CourtRequestError
 from collector.court_parser import ItemNotice, parse_search_page
+from collector.notice_pdf_reader import PdfReadError
 from collector.notice_document_client import NoticeDocumentSession
 from collector.repository import (
     InMemoryAuctionRepository,
@@ -339,6 +340,10 @@ class FakeDocumentReader:
         self.opened.append(ref.ecdoc_id)
         return NoticeDocumentSession(streamdocs_id="doc-1", access_token="token-1")
 
+    def fetch_pdf(self, session) -> bytes:
+        # 이 더블은 **텍스트 레이어 폴백 경로**를 검사한다. PDF 경로는 별도 테스트에서 본다.
+        raise PdfReadError("fake reader has no pdf")
+
     def fetch_text_page(self, session, page: int):
         if page == 0:
             return json.loads(TEXTS_FIXTURE.read_text(encoding="utf-8"))
@@ -360,8 +365,9 @@ def test_daily_reads_tenant_documents_only_when_reader_given():
         FakeDailyClient({court: pages}), FakeDailyRepository(), document_reader=reader
     )
     assert len(reader.opened) == 1
-    # 검색 1 + 상세 1 + 문서 열기 3 + 텍스트 1쪽 1
-    assert with_reader_summary.requests_total == 6
+    # 검색 1 + 상세 1 + 문서 열기 3 + PDF 2(사본+다운로드) + 텍스트 1쪽 1.
+    # 이 더블은 PDF 를 못 읽어 텍스트 레이어로 폴백하므로 두 경로의 요청이 모두 세어진다
+    assert with_reader_summary.requests_total == 8
 
 
 def test_daily_reopens_notice_that_has_no_tenant_scan_yet():

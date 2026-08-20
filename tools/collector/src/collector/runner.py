@@ -23,7 +23,9 @@ from collector.notice_document_client import (
     NoticeDocumentSession,
     notice_document_ref,
 )
-from collector.notice_tenant_parser import NoticeTenant, parse_tenant_table
+from collector.notice_pdf_parser import parse_tenant_table_from_cells
+from collector.notice_pdf_reader import PdfReadError, pdf_to_document
+from collector.notice_tenant_parser import NoticeTenant, TenantTable, parse_tenant_table
 from collector.repository import UpsertResult
 
 
@@ -99,6 +101,8 @@ class NoticeDocumentReader(Protocol):
     def open_document(self, ref: NoticeDocumentRef) -> NoticeDocumentSession | None: ...
 
     def fetch_text_page(self, session: NoticeDocumentSession, page: int) -> list[Any]: ...
+
+    def fetch_pdf(self, session: NoticeDocumentSession) -> bytes: ...
 
 
 class PhotoSearchClient(Protocol):
@@ -497,19 +501,20 @@ def _collect_notices_for_rows(
         notice = replace(notice, bid_date=notice_bid_date(row))
 
         if document_reader is not None:
-            tenants, rejected, scanned, continued, region = _collect_notice_tenants(
+            scan = _collect_notice_tenants(
                 run_id=run_id, reader=document_reader, detail_payload=response, case_no=case_no
             )
             notice = replace(
                 notice,
-                tenants=tenants,
-                tenants_scanned=scanned,
-                tenants_rejected=rejected if scanned else None,
-                tenants_continued=continued if scanned else None,
-                tenant_text_region=region if scanned else None,
+                tenants=scan.tenants,
+                tenants_scanned=scan.scanned,
+                tenants_rejected=scan.rejected if scan.scanned else None,
+                tenants_continued=scan.continued if scan.scanned else None,
+                tenant_text_region=scan.region_lines if scan.scanned else None,
+                tenant_source=scan.source,
             )
-            tenant_rows += len(tenants)
-            tenant_rejected += rejected
+            tenant_rows += len(scan.tenants)
+            tenant_rejected += scan.rejected
         notices.append(notice)
 
     return _NoticeBatch(
@@ -521,13 +526,29 @@ def _collect_notices_for_rows(
     )
 
 
+@dataclass(frozen=True)
+class _TenantScan:
+    """점유자 표 스캔 결과. 값이 여섯이라 튜플로는 호출부에서 읽히지 않는다.
+
+    `source`는 어느 경로로 읽었는지다(018). PDF 괘선과 텍스트 레이어는 정확도가 달라
+    섞어서 통계를 내면 안 된다.
+    """
+
+    tenants: tuple[NoticeTenant, ...] = ()
+    rejected: int = 0
+    scanned: bool = False
+    continued: bool | None = None
+    region_lines: tuple[tuple[Any, ...], ...] = ()
+    source: str | None = None
+
+
 def _collect_notice_tenants(
     *,
     run_id: str,
     reader: NoticeDocumentReader,
     detail_payload: dict[str, Any],
     case_no: str,
-) -> tuple[tuple[NoticeTenant, ...], int, bool, bool | None, tuple[tuple[Any, ...], ...]]:
+) -> _TenantScan:
     """명세서 PDF에서 점유자 표를 읽어 (저장할 행, 버린 행 수, 문서를 열었는지, 표가 이어지는지,
     표 영역 원문)를 돌려준다.
 
@@ -546,12 +567,32 @@ def _collect_notice_tenants(
     """
     ref = notice_document_ref(detail_payload)
     if ref is None:
-        return ((), 0, False, None, ())
+        return _TenantScan()
 
     session = reader.open_document(ref)
     if session is None:
         logger.info("notice_document_unavailable run_id=%s case=%s", run_id, case_no)
-        return ((), 0, False, None, ())
+        return _TenantScan()
+
+    # 괘선이 있는 PDF를 먼저 시도한다. 텍스트 레이어에는 표 경계가 없어 임차인의 행·사람을
+    # 못 가른다(WP-11 §4-30) — 실측 2025타경103032: 임차인 둘이 한 명으로 뭉치며 보증금
+    # 2억6,955만이 통째로 사라졌다. 차단(BlockedByCourtError)은 잡지 않고 올린다 (D-007).
+    try:
+        table = parse_tenant_table_from_cells(pdf_to_document(reader.fetch_pdf(session)))
+    except (PdfReadError, CourtRequestError) as exc:
+        logger.warning(
+            "notice_pdf_failed run_id=%s case=%s error=%s — 텍스트 레이어로 폴백", run_id, case_no, exc
+        )
+    else:
+        _warn_if_all_rejected(run_id, case_no, table)
+        return _TenantScan(
+            tenants=table.tenants,
+            rejected=table.rejected,
+            scanned=True,
+            continued=table.continued,
+            region_lines=table.region_lines,
+            source="PDF_CELLS",
+        )
 
     pages: list[list[Any]] = []
     for page in range(NOTICE_TEXT_MAX_PAGES):
@@ -559,17 +600,30 @@ def _collect_notice_tenants(
         table = parse_tenant_table(pages)
         if not table.continued:
             break
+    _warn_if_all_rejected(run_id, case_no, table)
+    return _TenantScan(
+        tenants=table.tenants,
+        rejected=table.rejected,
+        scanned=True,
+        continued=table.continued,
+        region_lines=table.region_lines,
+        source="TEXT_LAYER",
+    )
+
+
+def _warn_if_all_rejected(run_id: str, case_no: str, table: TenantTable) -> None:
+    """행이 있었는데 전부 검증 게이트에서 버려졌다 — 새 변형 레이아웃일 가능성이 크다.
+
+    이 로그가 없으면 "임차인 없음"과 구분되지 않아 소실을 알아챌 수 없다 (실측 2026-08-06:
+    좌측 밀림 레이아웃 문서들이 이 경로로 조용히 사라졌다).
+    """
     if not table.tenants and table.rejected:
-        # 행이 있었는데 전부 검증 게이트에서 버려졌다 — 새 변형 레이아웃일 가능성이 크다.
-        # 이 로그가 없으면 "임차인 없음"과 구분되지 않아 소실을 알아챌 수 없다 (실측 2026-08-06:
-        # 좌측 밀림 레이아웃 문서들이 이 경로로 조용히 사라졌다).
         logger.warning(
             "notice_tenants_all_rejected run_id=%s case=%s rejected=%s",
             run_id,
             case_no,
             table.rejected,
         )
-    return (table.tenants, table.rejected, True, table.continued, table.region_lines)
 
 
 def _search_result_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -867,7 +921,10 @@ class _CountingClient:
 
 
 class _CountingDocumentReader:
-    """명세서 문서 요청 수를 세는 래퍼 — 문서 열기 3회 + 쪽당 1회 (NoticeDocumentClient 참조)."""
+    """명세서 문서 요청 수를 세는 래퍼 — 문서 열기 3회 + 쪽당 1회 + PDF 2회.
+
+    PDF는 사본 생성(/changes)과 다운로드 두 번이다 (WP-11 §4-31).
+    """
 
     def __init__(self, reader: NoticeDocumentReader, counter: _CountingClient) -> None:
         self._reader = reader
@@ -880,6 +937,10 @@ class _CountingDocumentReader:
     def fetch_text_page(self, session: NoticeDocumentSession, page: int) -> list[Any]:
         self._counter.requests += 1
         return self._reader.fetch_text_page(session, page)
+
+    def fetch_pdf(self, session: NoticeDocumentSession) -> bytes:
+        self._counter.requests += 2
+        return self._reader.fetch_pdf(session)
 
 
 def run_daily(

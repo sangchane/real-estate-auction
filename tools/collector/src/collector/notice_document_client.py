@@ -11,6 +11,7 @@ from urllib import request
 
 from collector.backoff import backoff_delay_ms
 from collector.court_client import BlockedByCourtError, CourtRequestError
+from collector.streamdocs_token import download_url
 
 
 # 열람로그(courtauction) — 응답의 encParam이 이후 ecfs 요청의 열람 티켓이 된다
@@ -23,6 +24,17 @@ DOC_VIEWER_INFO_URL = "https://ecfs.scourt.go.kr/sgvo/sgvomain/selectDocVwrInf.o
 GET_PDF_URL = "https://ecfs.scourt.go.kr/sgvo/sgvomain/getPdf.on"
 # 문서 스트리밍(pvo) — 페이지별 텍스트 레이어(라인 + 문자 좌표)
 TEXTS_URL = "https://pvo.scourt.go.kr/streamdocs/v4/documents/{doc_id}/texts/{page}"
+# 저장(다운로드) 경로. 뷰어의 저장 버튼과 같은 2단계다 (WP-11 §4-31):
+# 원본에 변경사항을 적용한 **사본**을 만들고, 그 새 id로 서명 토큰을 계산해 받는다.
+# 원본 id를 직접 받으려 하면 거부된다.
+STREAMDOCS_BASE = "https://pvo.scourt.go.kr/streamdocs/"
+CHANGES_URL = STREAMDOCS_BASE + "v4/documents/{doc_id}/changes"
+# 변경 없는 사본. 뷰어는 여기에 열람 도장을 싣지만 그 워터마크는 renderTarget=SCREEN(화면 전용)
+# 이라 저장본에 들어가지 않는다 — 실측으로 저장본 텍스트 레이어에 워터마크 문구가 0건이다.
+_NO_CHANGES: dict[str, Any] = {
+    "layout": [], "annot": [], "acroform": [], "acroformProp": {"CO": []},
+    "watermark": [], "outline": [], "saveAsIncremental": True,
+}  # fmt: skip
 TEXTS_REFERER = "https://pvo.scourt.go.kr/streamdocs/view/sd"
 
 # 비로그인 열람자. 브라우저가 보내는 값과 같아야 한다 (수집기 기본값 SYSTEM과 다르다)
@@ -181,6 +193,69 @@ class NoticeDocumentClient:
             method="GET",
         )
         return payload if isinstance(payload, list) else []
+
+    def fetch_pdf(self, session: NoticeDocumentSession) -> bytes:
+        """명세서 PDF를 받는다 — 뷰어의 저장 버튼과 같은 2단계 (WP-11 §4-31).
+
+        표 괘선은 PDF에만 있다. 텍스트 레이어로는 임차인의 행·사람을 못 가르므로
+        (§4-30) 이 경로가 점유자 표의 기준이 된다.
+
+        서명 토큰은 **분 단위로 바뀐다**. 분 경계를 넘어 거부되면 새로 계산해 한 번만
+        다시 시도한다 — 시계 차이를 다루는 것이지 차단을 뚫는 것이 아니다.
+        두 번째도 거부되면 차단으로 보고 올린다(D-007).
+        """
+        changes = self._json(
+            CHANGES_URL.format(doc_id=session.streamdocs_id),
+            headers={
+                "Authorization": f"Access-Token {session.access_token}",
+                "Referer": TEXTS_REFERER,
+                "Origin": "https://pvo.scourt.go.kr",
+            },
+            body=_NO_CHANGES,
+        )
+        copy_id = str(changes.get("streamdocsId") or "")
+        if not copy_id:
+            raise CourtRequestError("changes did not return a document id")
+
+        for attempt in (1, 2):
+            url = download_url(
+                STREAMDOCS_BASE, copy_id, original_id=session.streamdocs_id
+            )
+            try:
+                pdf = self._bytes(url, session.access_token)
+            except BlockedByCourtError:
+                if attempt == 2:
+                    raise
+                continue  # 분 경계를 넘었을 수 있다 — 토큰을 새로 만들어 한 번만 재시도
+            if not pdf.startswith(b"%PDF"):
+                raise CourtRequestError(f"download returned {len(pdf)} bytes that are not a PDF")
+            return pdf
+        raise CourtRequestError("unreachable")
+
+    def _bytes(self, url: str, access_token: str) -> bytes:
+        """PDF처럼 JSON이 아닌 응답을 받는다. 간격·백오프·차단 판정은 _request와 같다."""
+        headers = {
+            "Authorization": f"Access-Token {access_token}",
+            "Referer": TEXTS_REFERER,
+        }
+        last_status: int | None = None
+        for attempt in range(1, self._max_retry + 1):
+            if attempt > 1:
+                self._sleep_ms(backoff_delay_ms(attempt - 1))
+            elif self._request_interval_ms:
+                self._sleep_ms(self._request_interval_ms)
+            try:
+                status_code, raw = self._http_call(url, headers, None, "GET")
+            except OSError as exc:
+                raise CourtRequestError(f"notice document transport failed: {exc}") from exc
+            last_status = status_code
+            if status_code in {403, 429}:
+                raise BlockedByCourtError(f"court blocked collector: HTTP {status_code}")
+            if 200 <= status_code < 300:
+                return raw
+            if status_code < 500:
+                raise CourtRequestError(f"notice document request failed: HTTP {status_code}")
+        raise CourtRequestError(f"notice document request failed after retries: HTTP {last_status}")
 
     def _json(self, url: str, *, headers: dict[str, str], body: dict[str, Any]) -> dict[str, Any]:
         payload = self._request(url, headers=headers, body=body, method="POST")

@@ -646,13 +646,15 @@ def _replace_notice_tenants(cur: psycopg.Cursor[Any], notice_id: int, notice: It
                 -- 빈 값으로 덮지 않는다. 문서는 열렸는데 표를 못 찾은 회차(쪽 상한·양식 변형)가
                 -- 이미 보관한 원문을 지우면 열람 창이 닫힌 뒤에는 복구할 수 없다 —
                 -- 바로 아래 tenants가 비면 표를 손대지 않는 것과 같은 이유다
-                tenant_text_region = COALESCE(%s, tenant_text_region)
+                tenant_text_region = COALESCE(%s, tenant_text_region),
+                tenant_source = COALESCE(%s, tenant_source)
             WHERE id = %s
             """,
             (
                 notice.tenants_rejected,
                 notice.tenants_continued,
                 _text_region_json(notice.tenant_text_region),
+                notice.tenant_source,
                 notice_id,
             ),
         )
