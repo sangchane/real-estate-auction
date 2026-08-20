@@ -242,6 +242,10 @@ class NoticeDocumentClient:
         headers = {
             "Authorization": f"Access-Token {access_token}",
             "Referer": TEXTS_REFERER,
+            # _urllib_call 이 모든 요청에 Accept: application/json 을 붙인다. PDF 를 달라면서
+            # JSON 만 받겠다고 보내면 서버가 406 으로 거절한다 (실측 2026-08-21 03:22, 그날
+            # 명세서 74건이 전부 텍스트 레이어로 폴백했다). 같은 키는 뒤에 넣는 쪽이 이긴다.
+            "Accept": "application/pdf, application/octet-stream, */*",
         }
         last_status: int | None = None
         for attempt in range(1, self._max_retry + 1):
