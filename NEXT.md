@@ -1,21 +1,23 @@
 <!-- NEXT-ACTION:START -->
 ## ▶ 지금 할 일 (새 세션은 이 블록부터 — SessionStart 훅이 자동 주입)
 
-- **[대기·결정]** **동일인이 두 명으로 갈려 인수액·임차인 수가 부풀려진다** (WP-11 §4-27, 실측 확인).
-  `tenant_seq`를 성명으로 묶는데 출처마다 표기가 달라 같은 사람이 갈리고, 한쪽은
-  `ASSUMED_AMOUNT_UNKNOWN`·다른 쪽은 `ASSUMED_FULL`이 되어 같은 보증금을 두 번 센다.
-  실측: 유령 인원 1,040명 / 영향 명세서 **956건(임차인 있는 2,504건의 38%)**. 화면에
-  "임차인 2명 / 1.6억 이상"으로 나오는데 실제로는 1명·1.6억이다.
-  고치는 방향에 트레이드오프가 있어(과소 표시 위험) 사용자 결정이 필요하다.
-  → `apps/api/src/auction-items/notice-tenant-merge.ts`, `auction-items.repository.ts`(tenantCount)
-  같은 결정에 **행 뭉침**(§4-29)이 딸려 있다 — 현황조사 행이 앵커가 없어 이웃 임차인의 행을
-  삼킨다(54행/54건). 정보출처를 앵커로 쓰면 행은 갈리지만 성명 병합셀이 아래 행에 떨어져 귀속이
-  어긋난다. 행·사람 묶기 기준을 한 번에 정해야 한다. → `tools/collector/src/collector/notice_tenant_parser.py`
-- **[진행중]** WP-11 룰 역채점 — H3(임차인 유무↔매각결과) 첫 비교가 판독 불가로 기록됨.
-  판독 가능한 비교 설계를 다시 세운다. → `docs/work-orders/WP-11-rule-backtest.md`, 커밋 `f0aa377`
-- **[확인필요]** 열람 창이 열렸는데 임차인 표가 안 잡힌 2건 — `B000213 2023타경111117/1,2`
-  (기일 08-25, 창은 08-18 개시). 다음 daily 회차에 잡히는지 본다. 안 잡히면 재방문 조건 결함이다.
-  구멍 실측·원인은 WP-11 §4-28. → `tools/collector/src/collector/runner.py`(needs_tenants)
+- **[확인필요·오늘]** **WAF 차단이 지속되는지** — 08-20 10:01:59에 pvo 문서 요청이 차단됐다
+  (원인: 없는 경로 4개 연속 시도, WP-11 §4-30). 12:00 정기 회차가 정상 완주하면 일시적이다.
+  → `tools/collector/daily.log`의 `daily_done`·`notice_unavailable`
+- **[진행중]** **점유자 표를 PDF 괘선으로 파싱하도록 전환** (WP-11 §4-30에서 방향 확정).
+  좌표만으로 푸는 길은 실측으로 기각했고, 원본 PDF를 정상 경로로 받을 수 있음을 확인했다
+  (`GET /streamdocs/v4/documents/{id}` → `%PDF-1.4`). `opendataloader-pdf`가 병합셀을
+  `row span`으로 정확히 가른다. **다음 단계는 실제 명세서 1건 검증** — 점유자 표가 하나로
+  잡히는가(등기부에서는 표를 과분할했다). 하네스는 준비돼 있다.
+  주의: 문서 취득은 **알려진 엔드포인트 1개만** 호출한다. 경로 탐색 금지.
+  → `tools/collector/src/collector/notice_tenant_parser.py`, `notice_document_client.py`
+- **[대기·결정]** Java 11+ 런타임 도입 여부 — opendataloader는 JAR이라 Java가 필요하다.
+  이 PC는 JDK 21이 있는데도 `java`가 8로 잡히므로 `run_daily.cmd`에 경로 명시가 필요하다.
+- **[확인필요]** 오염 행 재수집 잔여 10행 — notice 3316(창 08-20 개시, 마커 비움 완료)은
+  12:00 회차가 받는지 본다. 나머지: 08-24 개시 3691·3723 / 08-25 개시 3835·3844·4015·4030·4079·3559.
+  회수 불가 1건 notice 2268. → WP-11 §4-29
+- **[대기·사용자]** 정비구역 오버레이 기획 착수 조건 — GATE 3차 CONCERNS. 서울 열린데이터광장
+  인증키·브이월드 계정 발급이 선행이다. → `autopilot/redevelopment-zone-overlay/09-readiness-report-gate3.md`
 - **[대기·사용자]** 실거래가 API 신청 — 승인되면 실부담 시나리오 기준을 감정가 → 시세로 전환.
   → `apps/api/src/rights-analysis/domain/total-burden.ts`
 <!-- NEXT-ACTION:END -->
