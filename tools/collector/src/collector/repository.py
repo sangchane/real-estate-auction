@@ -93,6 +93,14 @@ class InMemoryNoticeRepository:
             if notice.tenants_scanned
         }
 
+    def find_item_keys_needing_pdf_rescan(self) -> set[tuple[str, str, str, Any]]:
+        """인메모리 저장소는 스캔 시각을 모델링하지 않아 재수집 대상을 내지 않는다 (018).
+
+        경과시간 조건이 재수집의 안전장치이므로, 그것을 흉내낼 수 없으면 대상을 내지 않는 쪽이
+        맞다 — 흉내내면 테스트가 실제와 다른 동작을 검증하게 된다.
+        """
+        return set()
+
     def mask_ended_case_tenant_names(self) -> int:
         """종료 사건의 성명을 지운다 — 종료 판정은 주입된 ended_keys로 흉내낸다 (NF-03)."""
         masked = 0

@@ -108,6 +108,9 @@ class FakeDailyRepository:
     def find_item_keys_with_tenant_scan(self):
         return self._notice_repo.find_item_keys_with_tenant_scan()
 
+    def find_item_keys_needing_pdf_rescan(self):
+        return self._notice_repo.find_item_keys_needing_pdf_rescan()
+
     def mask_ended_case_tenant_names(self):
         return self._notice_repo.mask_ended_case_tenant_names()
 
@@ -674,3 +677,50 @@ def test_daily_photo_stage_reuses_photo_runner():
 
     assert client.photo_searches == ["20240130000001"]
     assert summary.stage_failures == 0
+
+
+def test_daily_rescans_text_layer_notices_up_to_the_limit():
+    """텍스트 레이어로 읽은 명세서를 PDF 괘선으로 다시 받되, 회차당 상한을 지킨다 (018).
+
+    상한이 없으면 한 회차에 전 명세서를 다시 받아 법원이 조용히 degrade한다 —
+    실측 2026-07-31: 180건 정상 뒤 287건 연속 빈 응답 (WP-11 §4-3).
+    """
+    court = "B000210"
+    rows = [_row(court, f"2024타경{n}") for n in range(1, 6)]
+    pages = [_search_response(rows, page_no=1, total="5")]
+
+    repository = FakeDailyRepository()
+    reader = FakeDocumentReader()
+    _run(FakeDailyClient({court: pages}), repository, document_reader=reader)
+    assert len(reader.opened) == 5  # 신규는 상한에 걸리지 않는다
+
+    # 두 번째 회차: 전부 TEXT_LAYER 라 재수집 대상이지만 상한이 2다
+    scanned = repository.find_item_keys_with_tenant_scan()
+    repository.find_item_keys_needing_pdf_rescan = lambda: scanned  # type: ignore[method-assign]
+    second_reader = FakeDocumentReader()
+    _run(
+        FakeDailyClient({court: pages}),
+        repository,
+        document_reader=second_reader,
+        rescan_limit=2,
+    )
+
+    assert len(second_reader.opened) == 2
+
+
+def test_daily_does_not_rescan_when_limit_is_zero():
+    """상한 0이면 재수집을 아예 하지 않는다 — 법원이 degrade 중일 때 끄는 스위치다."""
+    court = "B000210"
+    pages = [_search_response([_row(court, "2024타경1")], page_no=1, total="1")]
+
+    repository = FakeDailyRepository()
+    _run(FakeDailyClient({court: pages}), repository, document_reader=FakeDocumentReader())
+
+    scanned = repository.find_item_keys_with_tenant_scan()
+    repository.find_item_keys_needing_pdf_rescan = lambda: scanned  # type: ignore[method-assign]
+    reader = FakeDocumentReader()
+    _run(
+        FakeDailyClient({court: pages}), repository, document_reader=reader, rescan_limit=0
+    )
+
+    assert reader.opened == []

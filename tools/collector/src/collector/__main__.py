@@ -211,6 +211,12 @@ def _daily_arg_parser() -> argparse.ArgumentParser:
         "--notice-limit", type=int, default=None, help="명세서 상세조회할 최대 물건 수"
     )
     parser.add_argument(
+        # 텍스트 레이어로 읽은 명세서를 PDF 괘선으로 다시 받는 회차당 상한. 상한이 없으면 한
+        # 회차에 전 명세서를 다시 받아 법원이 조용히 degrade한다 (WP-11 §4-3).
+        # 신규 수집에는 걸리지 않는다 — 창이 닫히면 영구 소실이라 막으면 안 된다.
+        "--rescan-limit", type=int, default=40, help="PDF 재수집 회차당 상한 (0이면 재수집 안 함)"
+    )
+    parser.add_argument(
         "--backfill-limit", type=int, default=None, help="매각 결과를 조회할 최대 사건 수"
     )
     parser.add_argument(
@@ -248,6 +254,7 @@ def _run_daily(argv: list[str]) -> None:
         document_reader=document_reader,
         max_search_pages=args.max_pages,
         notice_limit=args.notice_limit,
+        rescan_limit=args.rescan_limit,
         backfill_limit=args.backfill_limit,
         photo_limit=args.photo_limit,
     )

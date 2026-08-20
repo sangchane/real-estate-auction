@@ -163,6 +163,31 @@ class PostgresAuctionRepository:
                 )
                 return {(str(r[0]), str(r[1]), str(r[2]), r[3]) for r in cur.fetchall()}
 
+    def find_item_keys_needing_pdf_rescan(self) -> set[tuple[str, str, str, date | None]]:
+        """PDF 괘선으로 다시 받아야 할 (물건, 기일) 집합.
+
+        텍스트 레이어로 읽은 표는 행·사람 묶기가 어긋나 있을 수 있어(WP-11 §4-30) 열람 창이
+        열려 있는 동안 다시 받는다.
+
+        **마지막 스캔이 20시간을 넘은 것만** 낸다. 이 조건이 없으면 PDF가 계속 실패하는 문서가
+        매 회차 재시도돼 재수집 예산을 영원히 잡아먹고, 다른 문서가 순서를 못 받는다.
+        스케줄이 3시간마다이므로 20시간이면 문서 하나가 하루 한 번쯤 차례를 받는다.
+        """
+        with psycopg.connect(self._database_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT DISTINCT ac.court_office_code, ac.case_no, ai.item_no, n.bid_date
+                    FROM auction_item_notice n
+                    JOIN auction_item ai ON ai.id = n.auction_item_id
+                    JOIN auction_case ac ON ac.id = ai.auction_case_id
+                    WHERE n.tenant_scanned_at IS NOT NULL
+                      AND n.tenant_source IS DISTINCT FROM 'PDF_CELLS'
+                      AND n.tenant_scanned_at < now() - interval '20 hours'
+                    """
+                )
+                return {(str(r[0]), str(r[1]), str(r[2]), r[3]) for r in cur.fetchall()}
+
     def mask_ended_case_tenant_names(self) -> int:
         """배당종결된 사건의 점유자 성명을 지우고 지운 행 수를 돌려준다 (NF-03).
 

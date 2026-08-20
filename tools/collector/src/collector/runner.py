@@ -135,6 +135,8 @@ class DailyRepository(
 
     def find_item_keys_with_tenant_scan(self) -> set[tuple[str, str, str, date | None]]: ...
 
+    def find_item_keys_needing_pdf_rescan(self) -> set[tuple[str, str, str, date | None]]: ...
+
     def mask_ended_case_tenant_names(self) -> int: ...
 
     def count_unmasked_tenant_names(self) -> int: ...
@@ -953,6 +955,7 @@ def run_daily(
     document_reader: NoticeDocumentReader | None = None,
     max_search_pages: int = 50,
     notice_limit: int | None = None,
+    rescan_limit: int = 40,
     backfill_limit: int | None = None,
     photo_limit: int | None = None,
 ) -> DailySummary:
@@ -1035,7 +1038,7 @@ def run_daily(
     # 표는 PDF에만 있고 열람 창(기일 1주 전~기일) 안에서만 얻을 수 있어, 기재사항이 먼저 들어온
     # 물건은 명세서 보유로 스킵되면 표를 영영 못 받는다 (기일이 지나면 영구 소실 — WP-11 §4-3).
     requests_start = counting.requests
-    candidates = skipped_existing = detailed = 0
+    candidates = skipped_existing = detailed = rescanned = 0
     notices_parsed = notice_unavailable = notice_failed = 0
     tenants_total = tenants_rejected = 0
     notices_inserted = notices_updated = notices_skipped = notices_store_failed = 0
@@ -1045,6 +1048,13 @@ def run_daily(
         have_tenant_scan = (
             repository.find_item_keys_with_tenant_scan() if document_reader is not None else set()
         )
+        # PDF 괘선으로 다시 받을 것 (018). 저장소가 경과시간까지 걸러서 낸다 — 계속 실패하는
+        # 문서가 매 회차 재시도돼 재수집 예산을 독점하지 않게
+        need_rescan = (
+            repository.find_item_keys_needing_pdf_rescan()
+            if document_reader is not None
+            else set()
+        )
     except Exception as exc:
         have_notice = None
         stage_failures += 1
@@ -1052,6 +1062,7 @@ def run_daily(
     if have_notice is not None:
         for court in court_office_codes:
             missing: list[tuple[int, dict[str, Any]]] = []
+            rescans: list[tuple[int, dict[str, Any]]] = []
             seen: set[tuple[str, str, str]] = set()
             for row_index, row in indexed_rows_by_court.get(court, []):
                 key = (court, str(row.get("srnSaNo") or ""), str(row.get("mokmulSer") or ""))
@@ -1062,16 +1073,26 @@ def run_daily(
                 # 이번 기일의 명세서를 갖고 있는지로 판단한다 — 물건 단위로 보면 유찰 후 새 기일의
                 # 명세서를 영영 못 받는다 (§4-13). 기일을 모르는 행은 예전처럼 유무로만 판단한다
                 bid_key = (*key, notice_bid_date(row))
+                # 아직 표를 못 받은 것과, 텍스트 레이어로 받아 다시 받을 것을 나눈다.
+                # 신규는 창이 닫히면 영구 소실이라 막지 않고, 재수집만 상한을 건다 — 상한이
+                # 없으면 한 회차에 전 명세서를 다시 받아 법원이 조용히 degrade한다(§4-3).
                 needs_tenants = document_reader is not None and bid_key not in have_tenant_scan
-                if bid_key in have_notice and not needs_tenants:
+                needs_upgrade = document_reader is not None and bid_key in need_rescan
+                if bid_key in have_notice and not (needs_tenants or needs_upgrade):
                     skipped_existing += 1
                     continue
-                missing.append((row_index, row))
+                (rescans if needs_upgrade and not needs_tenants else missing).append(
+                    (row_index, row)
+                )
             # 매각기일이 가까운 물건부터 받는다. 법원은 요청이 쌓이면 403이 아니라 **빈 응답**으로
             # 조용히 degrade한다(실측 2026-07-31: 180건 정상 뒤 287건 연속 빈 응답, 3시간 뒤 정상
             # 복구). 그 벽 너머로 밀린 물건은 그날 못 받는데, 명세서는 기일이 지나면 영구 소실이라
             # 검색 순서대로 돌면 가장 급한 물건이 가장 먼저 버려진다 (WP-11 §4-3).
             missing.sort(key=lambda pair: str(pair[1].get("maeGiil") or "99999999"))
+            rescans.sort(key=lambda pair: str(pair[1].get("maeGiil") or "99999999"))
+            # 재수집도 기일 임박순이다 — 창이 먼저 닫히는 것부터 고친다
+            missing.extend(rescans[:rescan_limit])
+            rescanned += len(rescans[:rescan_limit])
             if notice_limit is not None:
                 missing = missing[: max(notice_limit - detailed, 0)]
             detailed += len(missing)
@@ -1102,13 +1123,14 @@ def run_daily(
             notices_skipped += result.skipped
             notices_store_failed += result.failed
     logger.info(
-        "daily_notices run_id=%s candidates=%s skipped_existing=%s detailed=%s parsed=%s "
+        "daily_notices run_id=%s candidates=%s skipped_existing=%s detailed=%s rescanned=%s parsed=%s "
         "notice_unavailable=%s tenants=%s tenants_rejected=%s inserted=%s updated=%s "
         "skipped=%s store_failed=%s failed=%s requests=%s",
         run_id,
         candidates,
         skipped_existing,
         detailed,
+        rescanned,
         notices_parsed,
         notice_unavailable,
         tenants_total,
