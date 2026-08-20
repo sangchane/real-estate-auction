@@ -48,6 +48,9 @@ def test_client_retries_transient_errors_then_returns_payload():
         max_retry=3,
         transport=transport,
         sleep_ms=sleeps.append,
+        # 백오프에 지터가 들어가므로 난수원을 고정해 결정적으로 본다.
+        # 1.0이면 지터가 상한이라 지수 증가 그대로다 (jittered_ms 는 50~100%)
+        rand=lambda: 1.0,
     )
 
     assert client.search_items({"pageNo": 1}) == {"data": {"totalCnt": 0, "items": []}}
@@ -154,3 +157,30 @@ def test_urllib_transport_switches_headers_by_endpoint(monkeypatch):
     # 물건상세는 사건검색과 경로가 다르고 물건상세검색 화면에서 제출된다
     assert captured[2]["submissionid"] == court_client.ITEM_DETAIL_SUBMISSION_ID
     assert captured[2]["referer"] == court_client.REFERER
+
+
+def test_client_jitters_the_request_interval():
+    """요청 간격이 매번 같으면 그 자체가 기계 지문이라 차단 규칙에 걸린다 (D-007).
+
+    설정값(1500)보다 빨라지지는 않는다 — 간격은 예절의 하한이다.
+    """
+    import random
+
+    sleeps: list[int] = []
+
+    def transport(url: str, payload: dict) -> FakeResponse:
+        return FakeResponse(200, {"data": {"totalCnt": 0, "items": []}})
+
+    client = CourtAuctionClient(
+        base_url="https://www.courtauction.go.kr",
+        request_interval_ms=1500,
+        max_retry=3,
+        transport=transport,
+        sleep_ms=sleeps.append,
+        rand=random.random,
+    )
+    for _ in range(30):
+        client.search_items({"pageNo": 1})
+
+    assert len(set(sleeps)) > 10, "간격이 흔들리지 않는다"
+    assert all(1500 <= delay <= 2400 for delay in sleeps)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import random
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -8,7 +9,7 @@ from typing import Any
 from urllib import request
 from urllib.parse import urlsplit
 
-from collector.backoff import backoff_delay_ms
+from collector.backoff import backoff_delay_ms, interval_delay_ms, jittered_ms
 
 
 SEARCH_PATH = "/pgj/pgjsearch/searchControllerMain.on"
@@ -71,6 +72,7 @@ class HttpResponse:
 
 Transport = Callable[[str, dict[str, Any]], Any]
 SleepMs = Callable[[int], None]
+Rand = Callable[[], float]
 
 
 class CourtAuctionClient:
@@ -82,6 +84,7 @@ class CourtAuctionClient:
         max_retry: int,
         transport: Transport | None = None,
         sleep_ms: SleepMs | None = None,
+        rand: Rand | None = None,
     ) -> None:
         if request_interval_ms < 0:
             raise ValueError("request_interval_ms는 음수일 수 없습니다")
@@ -93,6 +96,8 @@ class CourtAuctionClient:
         self._max_retry = max_retry
         self._transport = transport or _urllib_transport
         self._sleep_ms = sleep_ms or _sleep_ms
+        # 간격·백오프를 흔들 난수원. 테스트가 결정적으로 돌 수 있게 주입 가능하게 둔다
+        self._rand = rand or random.random
 
     def search_items(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request(SEARCH_PATH, payload)
@@ -119,9 +124,9 @@ class CourtAuctionClient:
 
         for attempt in range(1, self._max_retry + 1):
             if attempt > 1:
-                self._sleep_ms(backoff_delay_ms(attempt - 1))
+                self._sleep_ms(jittered_ms(backoff_delay_ms(attempt - 1), rand=self._rand))
             elif self._request_interval_ms:
-                self._sleep_ms(self._request_interval_ms)
+                self._sleep_ms(interval_delay_ms(self._request_interval_ms, rand=self._rand))
 
             try:
                 response = self._transport(url, dict(payload))

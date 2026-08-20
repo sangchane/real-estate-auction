@@ -3,13 +3,14 @@ from __future__ import annotations
 
 import base64
 import json
+import random
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 from urllib import request
 
-from collector.backoff import backoff_delay_ms
+from collector.backoff import backoff_delay_ms, interval_delay_ms, jittered_ms
 from collector.court_client import BlockedByCourtError, CourtRequestError
 from collector.streamdocs_token import download_url
 
@@ -67,6 +68,7 @@ class NoticeDocumentSession:
 
 HttpCall = Callable[[str, dict[str, str], dict[str, Any] | None, str], tuple[int, bytes]]
 SleepMs = Callable[[int], None]
+Rand = Callable[[], float]
 
 
 def notice_document_ref(detail_payload: dict[str, Any]) -> NoticeDocumentRef | None:
@@ -111,6 +113,7 @@ class NoticeDocumentClient:
         max_retry: int,
         http_call: HttpCall | None = None,
         sleep_ms: SleepMs | None = None,
+        rand: Rand | None = None,
     ) -> None:
         if request_interval_ms < 0:
             raise ValueError("request_interval_ms는 음수일 수 없습니다")
@@ -120,6 +123,8 @@ class NoticeDocumentClient:
         self._max_retry = max_retry
         self._http_call = http_call or _urllib_call
         self._sleep_ms = sleep_ms or _sleep_ms
+        # 간격·백오프를 흔들 난수원. 테스트가 결정적으로 돌 수 있게 주입 가능하게 둔다
+        self._rand = rand or random.random
 
     def open_document(self, ref: NoticeDocumentRef) -> NoticeDocumentSession | None:
         """명세서 문서를 열어 pvo 접근 정보를 받는다. 열람 창이 아니면 None."""
@@ -241,9 +246,9 @@ class NoticeDocumentClient:
         last_status: int | None = None
         for attempt in range(1, self._max_retry + 1):
             if attempt > 1:
-                self._sleep_ms(backoff_delay_ms(attempt - 1))
+                self._sleep_ms(jittered_ms(backoff_delay_ms(attempt - 1), rand=self._rand))
             elif self._request_interval_ms:
-                self._sleep_ms(self._request_interval_ms)
+                self._sleep_ms(interval_delay_ms(self._request_interval_ms, rand=self._rand))
             try:
                 status_code, raw = self._http_call(url, headers, None, "GET")
             except OSError as exc:
@@ -275,9 +280,9 @@ class NoticeDocumentClient:
         last_status: int | None = None
         for attempt in range(1, self._max_retry + 1):
             if attempt > 1:
-                self._sleep_ms(backoff_delay_ms(attempt - 1))
+                self._sleep_ms(jittered_ms(backoff_delay_ms(attempt - 1), rand=self._rand))
             elif self._request_interval_ms:
-                self._sleep_ms(self._request_interval_ms)
+                self._sleep_ms(interval_delay_ms(self._request_interval_ms, rand=self._rand))
 
             try:
                 status_code, raw = self._http_call(url, headers, body, method)
