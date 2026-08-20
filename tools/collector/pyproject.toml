@@ -4,7 +4,10 @@ name = "auction-collector"
 version = "0.1.0"
 description = "법원경매정보 수집 배치"
 requires-python = ">=3.12"
-dependencies = ["psycopg[binary]>=3.2", "pyproj>=3.6"]
+# opendataloader-pdf 는 매각물건명세서 PDF의 표 구조(괘선)를 읽는다 — 텍스트 레이어에는
+# 괘선이 없어 임차인 행·사람을 못 가른다 (WP-11 §4-30). JAR 이라 Java 11+ 가 필요하고,
+# 실행할 java 는 COLLECTOR_JAVA 로 지정한다.
+dependencies = ["psycopg[binary]>=3.2", "pyproj>=3.6", "opendataloader-pdf>=2.0"]
 
 [dependency-groups]
 dev = ["pytest>=8.0", "ruff>=0.6"]

@@ -20,8 +20,12 @@ if not exist "%ENVFILE%" (
   exit /b 2
 )
 
+REM COLLECTOR_JAVA points at a Java 11+ runtime for the PDF table reader
+REM (opendataloader-pdf ships a JAR). On this machine the java on PATH is Java 8
+REM (C:\Windows\System32\java.exe), which dies with UnsupportedClassVersionError.
 for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%ENVFILE%") do (
   if /i "%%A"=="DATABASE_URL" set "DATABASE_URL=%%B"
+  if /i "%%A"=="COLLECTOR_JAVA" set "COLLECTOR_JAVA=%%B"
 )
 
 if not defined DATABASE_URL (
