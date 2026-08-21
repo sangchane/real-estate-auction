@@ -514,6 +514,7 @@ def _collect_notices_for_rows(
                 tenants_continued=scan.continued if scan.scanned else None,
                 tenant_text_region=scan.region_lines if scan.scanned else None,
                 tenant_source=scan.source,
+                pdf_bytes=scan.pdf,
             )
             tenant_rows += len(scan.tenants)
             tenant_rejected += scan.rejected
@@ -542,6 +543,8 @@ class _TenantScan:
     continued: bool | None = None
     region_lines: tuple[tuple[Any, ...], ...] = ()
     source: str | None = None
+    # 받은 PDF 원본. 화면에서 원문 확인용으로 보관한다(019) — 열람 창이 닫히면 다시 못 받는다
+    pdf: bytes | None = None
 
 
 def _collect_notice_tenants(
@@ -580,7 +583,8 @@ def _collect_notice_tenants(
     # 못 가른다(WP-11 §4-30) — 실측 2025타경103032: 임차인 둘이 한 명으로 뭉치며 보증금
     # 2억6,955만이 통째로 사라졌다. 차단(BlockedByCourtError)은 잡지 않고 올린다 (D-007).
     try:
-        table = parse_tenant_table_from_cells(pdf_to_document(reader.fetch_pdf(session)))
+        pdf = reader.fetch_pdf(session)
+        table = parse_tenant_table_from_cells(pdf_to_document(pdf))
     except (PdfReadError, CourtRequestError) as exc:
         logger.warning(
             "notice_pdf_failed run_id=%s case=%s error=%s — 텍스트 레이어로 폴백", run_id, case_no, exc
@@ -594,6 +598,7 @@ def _collect_notice_tenants(
             continued=table.continued,
             region_lines=table.region_lines,
             source="PDF_CELLS",
+            pdf=pdf,
         )
 
     pages: list[list[Any]] = []

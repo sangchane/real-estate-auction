@@ -224,10 +224,10 @@ class PostgresAuctionRepository:
                 cur.execute(
                     """
                     UPDATE auction_item_notice n
-                    SET tenant_text_region = NULL
+                    SET tenant_text_region = NULL, pdf_bytes = NULL
                     FROM auction_item ai
                     WHERE ai.id = n.auction_item_id
-                      AND n.tenant_text_region IS NOT NULL
+                      AND (n.tenant_text_region IS NOT NULL OR n.pdf_bytes IS NOT NULL)
                       AND EXISTS (
                         SELECT 1 FROM auction_sale_result r
                         WHERE r.auction_item_id = ai.id AND r.result_code = '015'
@@ -672,7 +672,11 @@ def _replace_notice_tenants(cur: psycopg.Cursor[Any], notice_id: int, notice: It
                 -- 이미 보관한 원문을 지우면 열람 창이 닫힌 뒤에는 복구할 수 없다 —
                 -- 바로 아래 tenants가 비면 표를 손대지 않는 것과 같은 이유다
                 tenant_text_region = COALESCE(%s, tenant_text_region),
-                tenant_source = COALESCE(%s, tenant_source)
+                tenant_source = COALESCE(%s, tenant_source),
+                -- 빈 값으로 덮지 않는다. 텍스트 레이어로 폴백한 회차가 이미 보관한 PDF를
+                -- 지우면 열람 창이 닫힌 뒤에는 복구할 수 없다 (017 tenant_text_region 과 같은 이유)
+                pdf_bytes = COALESCE(%s, pdf_bytes),
+                pdf_fetched_at = CASE WHEN %s IS NULL THEN pdf_fetched_at ELSE now() END
             WHERE id = %s
             """,
             (
@@ -680,6 +684,8 @@ def _replace_notice_tenants(cur: psycopg.Cursor[Any], notice_id: int, notice: It
                 notice.tenants_continued,
                 _text_region_json(notice.tenant_text_region),
                 notice.tenant_source,
+                notice.pdf_bytes,
+                notice.pdf_bytes,
                 notice_id,
             ),
         )

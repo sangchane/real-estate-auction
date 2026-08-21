@@ -363,6 +363,8 @@ def test_postgres_masks_tenant_names_only_for_ended_cases():
             tenant_text_region=(
                 ({"text": "홍길동", "rect": [{"left": 30, "right": 60, "bottom": 460, "top": 470}]},),
             ),
+            # 자유서술 3란까지 담긴 원본 — 마스킹이 이것도 지워야 한다 (019)
+            pdf_bytes=b"%PDF-1.4 fake",
         )
 
     ended, open_case = "2022타경101244", "2023타경4722"
@@ -421,6 +423,10 @@ def test_postgres_masks_tenant_names_only_for_ended_cases():
                 "SELECT count(*) FROM auction_item_notice WHERE tenant_text_region IS NOT NULL"
             )
             assert cur.fetchone()[0] == 1  # 진행 중 사건 것만 남는다
+            # PDF 원본도 마찬가지다. 여기엔 자유서술 3란의 제3자 실명까지 들어 있어
+            # 남겨두면 006 의 결정과 NF-03 이 둘 다 무너진다 (019)
+            cur.execute("SELECT count(*) FROM auction_item_notice WHERE pdf_bytes IS NOT NULL")
+            assert cur.fetchone()[0] == 1
 
 
 @pytest.mark.skipif(
