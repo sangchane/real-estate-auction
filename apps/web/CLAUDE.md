@@ -28,3 +28,16 @@ Next.js 16 App Router 웹. 물건 목록·지도·상세, 로그인, 즐겨찾�
 ```
 pnpm --filter @auction/web lint && pnpm --filter @auction/web test && pnpm --filter @auction/web build
 ```
+
+## 로컬 확인 (실수 방지)
+
+프로덕션 화면을 눈으로 볼 때는 **`pnpm --filter @auction/web serve`** 하나만 쓴다
+(`next build && next start`).
+
+`next start`가 떠 있는 채로 `next build`를 돌리면 안 된다. 서버는 옛 빌드의 청크 이름을
+메모리에 들고 있는데 새 빌드가 그 파일을 지워, 브라우저에서 `ChunkLoadError`와 함께
+"물건 정보를 불러오지 못했어요"가 뜬다. **코드 문제로 보이지만 서버 문제다** — 실제로 두 번
+이 함정에 빠졌다(§4-32). 서버를 먼저 내리고, 빌드가 끝난 뒤에 띄운다.
+
+지도(네이버 NCP)는 **포트 3000만 콘솔에 등록돼 있다.** 다른 포트로 띄우면 지도만 인증
+실패(401)하고 나머지는 정상이라 원인을 찾기 어렵다.
