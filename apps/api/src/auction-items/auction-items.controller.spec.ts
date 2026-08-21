@@ -158,3 +158,77 @@ describe('AuctionItemsController', () => {
     expect(res.end).not.toHaveBeenCalled();
   });
 });
+
+describe('목록 필터 — 지역·유형·가격 (경매를 좁히는 기본 손잡이)', () => {
+  function controller(repository: Partial<Record<string, jest.Mock>>) {
+    return new AuctionItemsController(repository as never);
+  }
+
+  it('용도는 콤마로 여러 개 받아 목록으로 넘긴다', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    await controller({ findMany }).list('20', '0', undefined, undefined, '아파트, 다세대');
+
+    expect(findMany).toHaveBeenCalledWith(20, 0, expect.objectContaining({
+      usages: ['아파트', '다세대'],
+    }));
+  });
+
+  it('빈 용도 문자열은 필터로 치지 않는다', async () => {
+    // 사용자가 유형 선택을 모두 해제하면 빈 값이 온다 — 그때 "해당 없음"이 되면 목록이 사라진다
+    const findMany = jest.fn().mockResolvedValue([]);
+    await controller({ findMany }).list('20', '0', undefined, undefined, ' , ');
+
+    expect(findMany).toHaveBeenCalledWith(20, 0, expect.objectContaining({ usages: undefined }));
+  });
+
+  it('가격 범위를 숫자로 넘긴다', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    await controller({ findMany }).list(
+      '20', '0', undefined, undefined, undefined, '100000000', '300000000',
+    );
+
+    expect(findMany).toHaveBeenCalledWith(20, 0, expect.objectContaining({
+      minPrice: 100_000_000,
+      maxPrice: 300_000_000,
+    }));
+  });
+
+  it('최소가가 최대가보다 크면 400 — 조용히 무시하면 잘못된 목록을 보게 된다', async () => {
+    const call = controller({ findMany: jest.fn() }).list(
+      '20', '0', undefined, undefined, undefined, '300000000', '100000000',
+    );
+
+    await expect(call).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('가격이 숫자가 아니면 400', async () => {
+    const call = controller({ findMany: jest.fn() }).list(
+      '20', '0', undefined, undefined, undefined, '비싼거',
+    );
+
+    await expect(call).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('모르는 정렬값은 400 — 화이트리스트 밖 값이 SQL로 내려가면 안 된다', async () => {
+    const call = controller({ findMany: jest.fn() }).list(
+      '20', '0', undefined, undefined, undefined, undefined, undefined, 'DROP TABLE',
+    );
+
+    await expect(call).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('건수는 목록과 같은 조건으로 센다 — 두 숫자가 어긋나면 안 된다', async () => {
+    const countMany = jest.fn().mockResolvedValue(42);
+    const result = await controller({ countMany }).count('서울특별시', '강남구', '아파트', '1', '2');
+
+    expect(result).toEqual({ count: 42 });
+    expect(countMany).toHaveBeenCalledWith({
+      sido: '서울특별시',
+      sigungu: '강남구',
+      usages: ['아파트'],
+      minPrice: 1,
+      maxPrice: 2,
+      sort: undefined,
+    });
+  });
+});

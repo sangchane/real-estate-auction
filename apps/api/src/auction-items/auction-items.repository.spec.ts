@@ -224,7 +224,16 @@ describe('AuctionItemsRepository', () => {
 
     await repository.findMany(20, 40);
 
-    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('LIMIT $1 OFFSET $2'), [20, 40, null, null]);
+    // 필터 자리는 지역·유형·가격 5개다 — 안 쓰면 전부 null 이고 조건이 통과된다
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('LIMIT $1 OFFSET $2'), [
+      20,
+      40,
+      null,
+      null,
+      null,
+      null,
+      null,
+    ]);
   });
 
   it('목록 조회는 sido·sigungu 필터를 바인딩 파라미터로 전달한다', async () => {
@@ -238,6 +247,9 @@ describe('AuctionItemsRepository', () => {
       0,
       '서울특별시',
       '종로구',
+      null,
+      null,
+      null,
     ]);
   });
 
@@ -471,5 +483,57 @@ describe('findNoticeAnalysis — 명세서만으로 하는 권리분석 (등기�
     const repository = new AuctionItemsRepository(pool as never);
 
     expect(await repository.findNoticeAnalysis('B000211', '2024타경63301', '1')).toBeNull();
+  });
+});
+
+describe('AuctionItemsRepository 목록 필터 (지역·유형·가격)', () => {
+  it('용도는 첫 조각으로 비교한다 — 법원이 콤마로 묶어 보내기 때문이다', async () => {
+    const pool = createMockPool([]);
+    const repository = new AuctionItemsRepository(pool as never);
+
+    await repository.findMany(20, 0, { usages: ['아파트', '다세대'] });
+
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining("split_part(raw.payload->>'dspslUsgNm', ',', 1) = ANY($5)"),
+      [20, 0, null, null, ['아파트', '다세대'], null, null],
+    );
+  });
+
+  it('가격 범위를 최저매각가격에 건다', async () => {
+    const pool = createMockPool([]);
+    const repository = new AuctionItemsRepository(pool as never);
+
+    await repository.findMany(20, 0, { minPrice: 1_000, maxPrice: 2_000 });
+
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining('ai.minimum_sale_price >= $6'),
+      [20, 0, null, null, null, 1_000, 2_000],
+    );
+  });
+
+  it('기일 임박순은 지난 기일을 뒤로 보낸다 — 지난 물건이 맨 위면 목록이 쓸모없다', async () => {
+    const pool = createMockPool([]);
+    const repository = new AuctionItemsRepository(pool as never);
+
+    await repository.findMany(20, 0, { sort: 'bidDate' });
+
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining('(sch.bid_datetime < now()), sch.bid_datetime ASC NULLS LAST'),
+      expect.anything(),
+    );
+  });
+
+  it('건수는 목록과 같은 조건을 쓴다 — 다른 조건이면 "전체 N건"이 목록과 어긋난다', async () => {
+    const pool = createMockPool([{ count: '7' }]);
+    const repository = new AuctionItemsRepository(pool as never);
+
+    const count = await repository.countMany({ sido: '서울특별시', usages: ['아파트'] });
+
+    expect(count).toBe(7);
+    // 건수 쿼리는 limit·offset이 없어 필터가 $1부터다
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining("hjguSido' = $1"),
+      ['서울특별시', null, ['아파트'], null, null],
+    );
   });
 });

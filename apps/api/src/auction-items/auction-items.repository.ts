@@ -89,6 +89,68 @@ const JOIN_RAW_AND_SCHEDULE = `
   ) ntc ON true
 `;
 
+/**
+ * 목록 조회 필터. 지역·유형·가격 세 축은 경매를 좁히는 기본 손잡이라 함께 다룬다.
+ *
+ * `usages`는 **용도 원문의 첫 조각**이다(예: `아파트`, `다세대`). 법원이 용도를 콤마로 묶어
+ * 보내므로 첫 조각으로 판정하는 것이 화면(shortUsageName·usage-category)과 같은 기준이다.
+ * 범주(APARTMENT 등)로 묶는 규칙은 화면이 갖고 있고 API는 이름 목록만 받는다 — 매핑이
+ * 두 곳에 생기면 갈라진다.
+ */
+export interface ItemListFilter {
+  sido?: string;
+  sigungu?: string;
+  usages?: string[];
+  minPrice?: number;
+  maxPrice?: number;
+  sort?: ItemListSort;
+}
+
+export type ItemListSort = 'recent' | 'bidDate' | 'priceAsc' | 'priceDesc' | 'failedDesc';
+
+// 목록과 건수가 같은 조건을 봐야 "전체 N건"이 목록과 어긋나지 않는다 — 조건을 한 곳에 둔다.
+// $1·$2는 목록에서 limit·offset이라 필터는 $3부터 시작한다.
+const LIST_CONDITIONS = (base: number) => `
+  WHERE ($${base}::text IS NULL OR raw.payload->>'hjguSido' = $${base})
+    AND ($${base + 1}::text IS NULL OR raw.payload->>'hjguSigu' = $${base + 1})
+    AND ($${base + 2}::text[] IS NULL
+         OR split_part(raw.payload->>'dspslUsgNm', ',', 1) = ANY($${base + 2}))
+    AND ($${base + 3}::bigint IS NULL OR ai.minimum_sale_price >= $${base + 3})
+    AND ($${base + 4}::bigint IS NULL OR ai.minimum_sale_price <= $${base + 4})`;
+
+const LIST_WHERE = LIST_CONDITIONS(3);
+const LIST_WHERE_COUNT = LIST_CONDITIONS(1);
+
+function listFilterValues(filter: ItemListFilter): (string | string[] | number | null)[] {
+  return [
+    filter.sido ?? null,
+    filter.sigungu ?? null,
+    filter.usages && filter.usages.length > 0 ? filter.usages : null,
+    filter.minPrice ?? null,
+    filter.maxPrice ?? null,
+  ];
+}
+
+/**
+ * 정렬 기준. 사용자가 고르는 값이라 화이트리스트로만 SQL에 넣는다(문자열 결합 금지).
+ *
+ * 기일 임박순은 지난 기일을 뒤로 보낸다 — 이미 지난 물건이 맨 위에 오면 목록이 쓸모없어진다.
+ */
+function orderBy(sort: ItemListSort | undefined): string {
+  switch (sort) {
+    case 'bidDate':
+      return `(sch.bid_datetime < now()), sch.bid_datetime ASC NULLS LAST`;
+    case 'priceAsc':
+      return `ai.minimum_sale_price ASC NULLS LAST`;
+    case 'priceDesc':
+      return `ai.minimum_sale_price DESC NULLS LAST`;
+    case 'failedDesc':
+      return `ai.failed_bid_count DESC NULLS LAST`;
+    default:
+      return `ai.updated_at DESC`;
+  }
+}
+
 const SELECT_AND_FROM = `
   SELECT
     ac.court_office_code AS "courtOfficeCode",
@@ -334,16 +396,31 @@ export class AuctionItemsRepository {
   async findMany(
     limit: number,
     offset: number,
-    filter: { sido?: string; sigungu?: string } = {},
+    filter: ItemListFilter = {},
   ): Promise<AuctionItemDto[]> {
     const result = await this.pool.query<AuctionItemRow>(
       `${SELECT_AND_FROM}
-       WHERE ($3::text IS NULL OR raw.payload->>'hjguSido' = $3)
-         AND ($4::text IS NULL OR raw.payload->>'hjguSigu' = $4)
-       ORDER BY ai.updated_at DESC LIMIT $1 OFFSET $2`,
-      [limit, offset, filter.sido ?? null, filter.sigungu ?? null],
+       ${LIST_WHERE}
+       ORDER BY ${orderBy(filter.sort)} LIMIT $1 OFFSET $2`,
+      [limit, offset, ...listFilterValues(filter)],
     );
     return this.withAssumedDeposit(result.rows);
+  }
+
+  /**
+   * 같은 조건의 전체 건수 — 목록 화면이 "전체 N건"과 페이지 끝을 알 수 있게 한다.
+   *
+   * 건수를 안 주면 사용자는 스크롤 끝까지 가봐야 얼마나 남았는지 안다. 조건을 좁힌 효과도
+   * 숫자로 보이지 않는다.
+   */
+  async countMany(filter: ItemListFilter = {}): Promise<number> {
+    const result = await this.pool.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+       ${JOIN_RAW_AND_SCHEDULE}
+       ${LIST_WHERE_COUNT}`,
+      listFilterValues(filter),
+    );
+    return Number(result.rows[0]?.count ?? 0);
   }
 
   async countBySido(): Promise<RegionCountDto[]> {

@@ -1,7 +1,7 @@
 // 물건 조회 컨트롤러 — 목록/단건/지역 집계/지도 뷰포트/사건 사진 읽기 전용 엔드포인트 (WP-02 수집 데이터 소비)
 import type { ServerResponse } from 'node:http';
 import { BadRequestException, Controller, Get, NotFoundException, Param, Query, Res } from '@nestjs/common';
-import { AuctionItemsRepository } from './auction-items.repository';
+import { AuctionItemsRepository, type ItemListSort } from './auction-items.repository';
 import type { AffordabilityDto } from './dto/affordability.dto';
 import type { AuctionCasePhotoDto } from './dto/auction-case-photo.dto';
 import type { AuctionItemDto } from './dto/auction-item.dto';
@@ -11,6 +11,57 @@ import type { RegionCountDto } from './dto/region-count.dto';
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 const BBOX_LIMIT = 500;
+
+const LIST_SORTS: readonly ItemListSort[] = [
+  'recent',
+  'bidDate',
+  'priceAsc',
+  'priceDesc',
+  'failedDesc',
+];
+
+/**
+ * 목록 필터 쿼리를 런타임 검증한다. TS 타입은 런타임을 보호하지 않는다(AGENTS.md 규칙 21) —
+ * 사용자가 보내는 값이라 여기서 걸러야 SQL 까지 이상한 값이 내려가지 않는다.
+ *
+ * 잘못된 값은 400으로 막는다. 조용히 무시하면 사용자는 필터가 걸린 줄 알고 잘못된 목록을 본다.
+ */
+function parseListFilter(query: {
+  usage?: string;
+  minPrice?: string;
+  maxPrice?: string;
+  sort?: string;
+}): { usages?: string[]; minPrice?: number; maxPrice?: number; sort?: ItemListSort } {
+  const usages = query.usage
+    ?.split(',')
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0);
+
+  const minPrice = parsePriceParam('minPrice', query.minPrice);
+  const maxPrice = parsePriceParam('maxPrice', query.maxPrice);
+  if (minPrice !== undefined && maxPrice !== undefined && minPrice > maxPrice) {
+    throw new BadRequestException('minPrice가 maxPrice보다 클 수 없어요');
+  }
+
+  let sort: ItemListSort | undefined;
+  if (query.sort !== undefined) {
+    if (!LIST_SORTS.includes(query.sort as ItemListSort)) {
+      throw new BadRequestException(`sort 값이 올바르지 않아요: ${query.sort}`);
+    }
+    sort = query.sort as ItemListSort;
+  }
+
+  return { usages: usages && usages.length > 0 ? usages : undefined, minPrice, maxPrice, sort };
+}
+
+function parsePriceParam(name: string, value: string | undefined): number | undefined {
+  if (value === undefined || value === '') return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new BadRequestException(`${name} 값이 올바르지 않아요: ${value}`);
+  }
+  return parsed;
+}
 
 function parseBboxParam(name: string, value: string | undefined): number {
   if (value === undefined) {
@@ -72,10 +123,39 @@ export class AuctionItemsController {
     @Query('offset') offset?: string,
     @Query('sido') sido?: string,
     @Query('sigungu') sigungu?: string,
+    @Query('usage') usage?: string,
+    @Query('minPrice') minPrice?: string,
+    @Query('maxPrice') maxPrice?: string,
+    @Query('sort') sort?: string,
   ): Promise<AuctionItemDto[]> {
     const parsedLimit = Math.min(Math.max(Number(limit) || DEFAULT_LIMIT, 1), MAX_LIMIT);
     const parsedOffset = Math.max(Number(offset) || 0, 0);
-    return this.repository.findMany(parsedLimit, parsedOffset, { sido, sigungu });
+    return this.repository.findMany(parsedLimit, parsedOffset, {
+      sido,
+      sigungu,
+      ...parseListFilter({ usage, minPrice, maxPrice, sort }),
+    });
+  }
+
+  /**
+   * 같은 조건의 전체 건수. 목록이 "전체 N건"과 남은 페이지를 알 수 있게 한다.
+   *
+   * 목록과 조건을 반드시 같이 넘겨야 두 숫자가 어긋나지 않는다.
+   */
+  @Get('count')
+  async count(
+    @Query('sido') sido?: string,
+    @Query('sigungu') sigungu?: string,
+    @Query('usage') usage?: string,
+    @Query('minPrice') minPrice?: string,
+    @Query('maxPrice') maxPrice?: string,
+  ): Promise<{ count: number }> {
+    const count = await this.repository.countMany({
+      sido,
+      sigungu,
+      ...parseListFilter({ usage, minPrice, maxPrice }),
+    });
+    return { count };
   }
 
   @Get(':courtOfficeCode/:caseNo/:itemNo/photos')
