@@ -1,17 +1,27 @@
 /* 명세서 원문 보기 팝업. 값은 전부 디자인 토큰 참조 — 하드코딩 금지(AGENTS.md 프론트 규칙). */
 
 .trigger {
-  font-size: var(--typography-body-sm-font-size);
-  color: var(--color-meta-link);
-  background: none;
-  border: 1px solid var(--color-hairline-soft);
-  border-radius: var(--radius-md);
+  /* buttonPillTab 토큰 스펙 그대로 — "버튼은 절대 각지지 않는다"(radius.full) */
+  font-size: var(--typography-body-sm-bold-font-size);
+  font-weight: var(--typography-body-sm-bold-font-weight);
+  color: var(--color-ink);
+  background-color: var(--color-canvas);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-full);
   padding: var(--spacing-xs) var(--spacing-base);
   cursor: pointer;
+  transition: background-color 0.16s ease, border-color 0.16s ease;
 }
 
 .trigger:hover {
   background-color: var(--color-surface-soft);
+}
+
+/* buttonPillTabActive 토큰 — 눌린 상태는 반전이다(그림자가 아니라) */
+.trigger:active {
+  background-color: var(--color-ink-deep);
+  color: var(--color-canvas);
+  border-color: var(--color-ink-deep);
 }
 
 .backdrop {
@@ -28,7 +38,7 @@
 
 .panel {
   background-color: var(--color-canvas);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-xxl);
   box-shadow: var(--shadow-md);
   width: min(1100px, 100%);
   /* 명세서는 세로로 길어 화면을 최대한 쓴다 */
@@ -64,16 +74,25 @@
 }
 
 .close {
-  font-size: var(--typography-body-sm-font-size);
-  background: none;
-  border: 1px solid var(--color-hairline-soft);
-  border-radius: var(--radius-md);
+  font-size: var(--typography-body-sm-bold-font-size);
+  font-weight: var(--typography-body-sm-bold-font-weight);
+  color: var(--color-ink);
+  background-color: var(--color-canvas);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-full);
   padding: var(--spacing-xs) var(--spacing-base);
   cursor: pointer;
+  transition: background-color 0.16s ease, border-color 0.16s ease;
 }
 
 .close:hover {
   background-color: var(--color-surface-soft);
+}
+
+.close:active {
+  background-color: var(--color-ink-deep);
+  color: var(--color-canvas);
+  border-color: var(--color-ink-deep);
 }
 
 /* 확대·축소는 브라우저 내장 PDF 뷰어가 준다 — 그래서 이 영역을 최대한 넓게 준다 */
