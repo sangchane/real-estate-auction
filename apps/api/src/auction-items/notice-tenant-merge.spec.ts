@@ -2,6 +2,7 @@ import { mergeNoticeTenants, type NoticeTenantRowInput } from './notice-tenant-m
 
 function row(overrides: Partial<NoticeTenantRowInput> & Pick<NoticeTenantRowInput, 'tenantSeq'>): NoticeTenantRowInput {
   return {
+    isGuarantor: false,
     sourceKind: '권리신고',
     occupiedPart: '202호',
     moveInDate: null,
@@ -31,7 +32,8 @@ describe('mergeNoticeTenants', () => {
     expect(merged).toEqual([
       {
         tenantSeq: 1,
-        sourceKinds: ['현황조사', '권리신고'],
+        isGuarantor: false,
+      sourceKinds: ['현황조사', '권리신고'],
         occupiedPart: '202호',
         moveInDate: '2020-07-29',
         fixedDate: '2023-12-20',

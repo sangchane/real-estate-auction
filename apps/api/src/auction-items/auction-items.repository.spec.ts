@@ -459,6 +459,7 @@ describe('findNoticeAnalysis — 명세서만으로 하는 권리분석 (등기�
     const pool = createNoticePool(notice, [
       {
         tenantSeq: 1,
+        isGuarantor: false,
         sourceKind: '현황조사',
         occupiedPart: '202호',
         moveInDate: new Date(2020, 6, 29),
@@ -473,9 +474,13 @@ describe('findNoticeAnalysis — 명세서만으로 하는 권리분석 (등기�
     const result = await repository.findNoticeAnalysis('B000211', '2024타경63301', '1');
 
     expect(JSON.stringify(result)).not.toContain('tenantName');
-    // 조회 SQL 자체가 성명 컬럼을 읽지 않아야 한다 — 응답에 섞일 경로를 만들지 않는다
+    // 성명을 **값으로 SELECT하지 않아야** 한다 — 응답에 섞일 경로를 만들지 않는다.
+    // 보증기관 대위 판정(isGuarantor)은 SQL 안에서 불리언으로만 바꿔 내보내므로,
+    // 성명 문자열 자체는 API 프로세스에 들어오지 않는다. 그래서 컬럼 언급이 아니라
+    // "결과 집합에 별칭으로 실리는지"를 본다.
     const tenantSql = (pool.query.mock.calls[1]?.[0] ?? '') as string;
-    expect(tenantSql).not.toContain('tenant_name');
+    expect(tenantSql).not.toMatch(/tenant_name\s+AS/i);
+    expect(tenantSql).not.toMatch(/^\s*tenant_name\s*,/m);
   });
 
   it('명세서를 못 받았으면 null — 빈 결과는 "인수할 권리 없음"으로 읽힌다', async () => {

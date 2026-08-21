@@ -10,6 +10,16 @@
 
 export interface NoticeTenantRowInput {
   tenantSeq: number;
+  /**
+   * 이 행의 신고인이 보증기관(주택도시보증공사 등)인지. 보증금 대위를 가려내는 데 쓴다
+   * (notice-tenant-succession) — 같은 보증금을 원 임차인과 보증기관이 각각 신고해
+   * 두 사람으로 세어지기 때문이다.
+   *
+   * **성명 자체는 받지 않는다.** 이 저장소는 권리분석 응답에 성명이 섞여 나갈 경로를 아예
+   * 만들지 않기로 했다(findNoticeAnalysis 주석). 판정에 필요한 것은 "보증기관인가"뿐이라
+   * SQL에서 그 불리언만 계산해 넘긴다.
+   */
+  isGuarantor: boolean;
   sourceKind: string | null;
   occupiedPart: string | null;
   moveInDate: string | null;
@@ -46,6 +56,7 @@ export function mergeNoticeTenants(rows: readonly NoticeTenantRowInput[]): Merge
         merged: {
           tenantSeq: row.tenantSeq,
           sourceKinds: row.sourceKind === null ? [] : [row.sourceKind],
+          isGuarantor: row.isGuarantor,
           occupiedPart: row.occupiedPart,
           moveInDate: row.moveInDate,
           fixedDate: row.fixedDate,

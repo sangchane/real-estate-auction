@@ -12,6 +12,7 @@ import { classifyNoticeAssumption } from '../rights-analysis/domain/notice-assum
 import { OBSERVED_FROM } from '../backtest/backtest.repository';
 import { assumedTotalOf, computeAffordability } from './affordability';
 import { mergeNoticeTenants } from './notice-tenant-merge';
+import { mergeSuccessions } from './notice-tenant-succession';
 
 // 법원 convAddr 접두사 → 면적 종류 코드. 화면이 평당가 분모를 고르는 근거라 문자열을 그대로
 // 흘리지 않고 코드로 고정한다.
@@ -34,6 +35,8 @@ interface NoticeRow {
 }
 
 interface NoticeTenantRow {
+  /** 보증기관이 신고한 행인지 — 성명 대신 이 불리언만 SELECT한다 */
+  isGuarantor: boolean | null;
   tenantSeq: number;
   sourceKind: string | null;
   occupiedPart: string | null;
@@ -277,6 +280,10 @@ export async function loadAssumedDeposits(
   const tenantResult = await pool.query<NoticeTenantRow & { noticeId: string }>(
     `SELECT notice_id AS "noticeId",
             tenant_seq AS "tenantSeq",
+            -- 보증기관이 신고한 행인지만 계산해 넘긴다. **성명 자체는 SELECT하지 않는다** —
+            -- 응답에 섞여 나갈 경로를 만들지 않는다는 이 파일의 결정을 지키면서, 대위 판정에
+            -- 필요한 사실만 얻는다. 한국토지주택공사는 넣지 않는다(전세임대는 LH가 본인 임차인이다).
+            (tenant_name ~ '(주택도시보증공사|한국주택금융공사|서울보증)') AS "isGuarantor",
             source_kind AS "sourceKind",
             occupied_part AS "occupiedPart",
             move_in_date AS "moveInDate",
@@ -302,9 +309,11 @@ export async function loadAssumedDeposits(
     const baselineDate = toIsoDate(meta.noticeBaselineDate ?? null);
     const deadline = toIsoDate(meta.noticeDistributionDemandDeadline ?? null);
     // 정보출처별로 흩어진 행을 사람 단위로 합친 뒤 판정한다 (findNoticeAnalysis와 같은 순서)
-    const tenants = mergeNoticeTenants(
+    const tenants = mergeSuccessions(
+      mergeNoticeTenants(
       (byNotice.get(noticeId) ?? []).map((tenant) => ({
         tenantSeq: tenant.tenantSeq,
+        isGuarantor: tenant.isGuarantor ?? false,
         sourceKind: tenant.sourceKind,
         occupiedPart: tenant.occupiedPart,
         moveInDate: toIsoDate(tenant.moveInDate),
@@ -313,6 +322,7 @@ export async function loadAssumedDeposits(
         demandedDistribution: tenant.demandedDistribution,
         demandedDistributionDate: toIsoDate(tenant.demandedDistributionDate),
       })),
+      ),
     ).map((tenant) => {
       const verdict = classifyNoticeAssumption(tenant, baselineDate, deadline);
       return {
@@ -513,6 +523,10 @@ export class AuctionItemsRepository {
 
     const tenantResult = await this.pool.query<NoticeTenantRow>(
       `SELECT tenant_seq AS "tenantSeq",
+              -- 보증기관이 신고한 행인지만 계산해 넘긴다. **성명 자체는 SELECT하지 않는다** —
+              -- 응답에 섞여 나갈 경로를 만들지 않는다는 이 파일의 결정을 지키면서, 대위 판정에
+              -- 필요한 사실만 얻는다. 한국토지주택공사는 넣지 않는다(전세임대는 LH가 본인 임차인이다).
+              (tenant_name ~ '(주택도시보증공사|한국주택금융공사|서울보증)') AS "isGuarantor",
               source_kind AS "sourceKind",
               occupied_part AS "occupiedPart",
               move_in_date AS "moveInDate",
@@ -538,9 +552,13 @@ export class AuctionItemsRepository {
       riskFlags: notice.riskFlags ?? [],
       // 정보출처별로 흩어진 행을 사람 단위로 합친 뒤 판정한다 — 한 행만 골라 보면
       // 다른 행에만 있는 보증금·배당요구를 버리게 된다.
-      tenants: mergeNoticeTenants(
+      // 보증기관이 대위한 보증금은 한 채권이다 — 원 임차인과 보증기관을 두 사람으로 세면
+      // 없는 임차인 때문에 "N억 이상"이 붙거나 금액이 두 배가 된다 (실측 1,578건)
+      tenants: mergeSuccessions(
+        mergeNoticeTenants(
         tenantResult.rows.map((row) => ({
           tenantSeq: row.tenantSeq,
+          isGuarantor: row.isGuarantor ?? false,
           sourceKind: row.sourceKind,
           occupiedPart: row.occupiedPart,
           moveInDate: toIsoDate(row.moveInDate),
@@ -549,6 +567,7 @@ export class AuctionItemsRepository {
           demandedDistribution: row.demandedDistribution,
           demandedDistributionDate: toIsoDate(row.demandedDistributionDate),
         })),
+        ),
       ).map((tenant) => {
         const verdict = classifyNoticeAssumption(tenant, baselineDate, deadline);
         return {
