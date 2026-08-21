@@ -55,7 +55,23 @@ export interface PanelItem {
   assumedDeposit: { amount: number; isLowerBound: boolean } | null;
 }
 
-type PanelView = 'summary' | 'rights';
+/**
+ * 패널 구획. 스크롤로 길게 늘어놓지 않고 왼쪽 아이콘 레일로 갈라 **한 번에 한 가지**만 보여준다.
+ *
+ * 지도 탐색 중에는 스크롤이 특히 불리하다 — 아래로 내리는 동안 지금 어느 물건을 보고 있었는지,
+ * 무엇을 확인하려 했는지 놓친다. 구획이 나뉘어 있으면 원하는 것만 바로 찍어서 본다.
+ *
+ * 아이콘만 두지 않고 라벨을 함께 쓴다. 아이콘 하나로 "권리분석"과 "실부담"을 구별하게 하면
+ * 매번 짐작하게 된다.
+ */
+const PANEL_VIEWS = [
+  { key: 'summary', icon: '🏠', label: '개요' },
+  { key: 'photos', icon: '🖼', label: '사진' },
+  { key: 'rights', icon: '⚖', label: '권리분석' },
+  { key: 'cost', icon: '💰', label: '실부담' },
+] as const;
+
+type PanelView = (typeof PANEL_VIEWS)[number]['key'];
 
 /** 묶음의 공통 주소 — 호수를 떼면 같은 건물을 가리키는 부분만 남는다. */
 function groupAddress(items: PanelItem[]): string | null {
@@ -289,6 +305,26 @@ function ItemDetail({
 
   return (
     <aside className={styles.panel} aria-label="물건 정보">
+      {/* 왼쪽 아이콘 레일 — 구획을 나눠 한 번에 한 가지만 보게 한다(스크롤 대신) */}
+      <nav className={styles.rail} role="tablist" aria-label="물건 정보 구획">
+        {PANEL_VIEWS.map((entry) => (
+          <button
+            key={entry.key}
+            type="button"
+            role="tab"
+            aria-selected={view === entry.key}
+            className={view === entry.key ? `${styles.railItem} ${styles.railItemActive}` : styles.railItem}
+            onClick={() => setView(entry.key)}
+          >
+            <span className={styles.railIcon} aria-hidden="true">
+              {entry.icon}
+            </span>
+            <span className={styles.railLabel}>{entry.label}</span>
+          </button>
+        ))}
+      </nav>
+
+      <div className={styles.body}>
       <div className={styles.header}>
         {onBack ? (
           <button type="button" className={styles.back} onClick={onBack}>
@@ -319,44 +355,8 @@ function ItemDetail({
         ) : null}
       </div>
 
-      <div className={styles.tabs} role="tablist" aria-label="물건 정보 구획">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === 'summary'}
-          className={view === 'summary' ? `${styles.tab} ${styles.tabActive}` : styles.tab}
-          onClick={() => setView('summary')}
-        >
-          요약
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === 'rights'}
-          className={view === 'rights' ? `${styles.tab} ${styles.tabActive}` : styles.tab}
-          onClick={() => setView('rights')}
-        >
-          권리분석
-        </button>
-      </div>
-
       {view === 'summary' ? (
         <>
-          {photos.length > 0 ? (
-            <div className={styles.photoStrip}>
-              {photos.map((photo) => (
-                // next/image 대신 <img> — 상세 화면과 같은 프록시 경로를 그대로 쓴다
-                <img
-                  key={photo.id}
-                  className={styles.photo}
-                  src={photoProxySrc(photo.id)}
-                  alt={photoAlt(photo)}
-                  loading="lazy"
-                />
-              ))}
-            </div>
-          ) : null}
-
           <div className={styles.priceBlock}>
             <div className={styles.priceRow}>
               <span className={styles.price}>
@@ -412,27 +412,52 @@ function ItemDetail({
             </div>
           </section>
         </>
+      ) : view === 'photos' ? (
+        <div className={styles.viewBody}>
+          {photos.length > 0 ? (
+            <div className={styles.photoGrid}>
+              {photos.map((photo) => (
+                // next/image 대신 <img> — 상세 화면과 같은 프록시 경로를 그대로 쓴다
+                <img
+                  key={photo.id}
+                  className={styles.photo}
+                  src={photoProxySrc(photo.id)}
+                  alt={photoAlt(photo)}
+                  loading="lazy"
+                />
+              ))}
+            </div>
+          ) : (
+            <p className={styles.unknown}>아직 사진을 받지 못했어요.</p>
+          )}
+        </div>
+      ) : view === 'cost' ? (
+        <div className={styles.viewBody}>
+          {analysis === undefined ? (
+            <p className={styles.unknown}>불러오는 중이에요...</p>
+          ) : analysis === null ? (
+            <p className={styles.unknown}>
+              명세서를 아직 받지 못해 실부담을 계산할 수 없어요. 인수할 권리가 없다는 뜻이 아니에요.
+            </p>
+          ) : (
+            <AffordabilityCustomBid
+              courtOfficeCode={item.courtOfficeCode}
+              caseNo={item.caseNo}
+              itemNo={item.itemNo}
+            />
+          )}
+        </div>
       ) : (
-        <div className={styles.rightsBody}>
+        <div className={styles.viewBody}>
           {analysis === undefined ? (
             <p className={styles.unknown}>권리분석을 불러오는 중이에요...</p>
           ) : (
-            <>
-              <RightsAnalysisView
-                analysis={analysis}
-                basis={{ minimumSalePrice: item.minimumSalePrice }}
-                affordability={affordability}
-                noticePdfUrl={noticePdfSrc(item)}
-              />
-              {/* 상세 페이지와 같은 입찰가 계산기 — 패널이 기본 동선이라 여기서도 완결돼야 한다 */}
-              {analysis !== null ? (
-                <AffordabilityCustomBid
-                  courtOfficeCode={item.courtOfficeCode}
-                  caseNo={item.caseNo}
-                  itemNo={item.itemNo}
-                />
-              ) : null}
-            </>
+            <RightsAnalysisView
+              analysis={analysis}
+              basis={{ minimumSalePrice: item.minimumSalePrice }}
+              affordability={affordability}
+              noticePdfUrl={noticePdfSrc(item)}
+            />
           )}
         </div>
       )}
@@ -454,6 +479,7 @@ function ItemDetail({
         >
           상세 페이지 새 탭으로 ↗
         </Link>
+      </div>
       </div>
     </aside>
   );

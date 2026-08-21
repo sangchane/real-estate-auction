@@ -4,18 +4,93 @@
 .panel {
   position: absolute;
   top: 0;
-  right: 0;
+  /* 왼쪽에 둔다. 지도를 볼 때 시선이 왼쪽에서 시작하고, 오른쪽에 두면 패널을 읽는 동안
+     방금 누른 마커가 패널 뒤에 가려지는 일이 잦다(마커는 대개 화면 가운데~오른쪽에 찍힌다). */
+  left: 0;
   bottom: 0;
-  width: 380px;
+  width: 420px;
   max-width: 100%;
   z-index: 20;
   background-color: var(--color-canvas);
-  border-left: 1px solid var(--color-hairline);
+  border-right: 1px solid var(--color-hairline);
   box-shadow: var(--shadow-md);
+  /* 레일과 본문을 가로로 나눈다. 스크롤은 본문만 한다 — 레일은 늘 같은 자리에 있어야
+     지금 어느 구획을 보는지 잃지 않는다. */
+  display: flex;
+  flex-direction: row;
+}
+
+/* 왼쪽 아이콘 레일 */
+.rail {
+  flex-shrink: 0;
+  width: 68px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+  padding: var(--spacing-md) var(--spacing-xxs);
+  background-color: var(--color-surface-soft);
+  border-right: 1px solid var(--color-hairline-soft);
+}
+
+.railItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--spacing-xs) 0;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: none;
+  color: var(--color-steel);
+  cursor: pointer;
+  transition: background-color 0.16s ease, color 0.16s ease;
+}
+
+.railItem:hover {
+  background-color: var(--color-canvas);
+}
+
+/* 선택은 반전이다 — buttonPillTabActive 와 같은 규칙 */
+.railItemActive {
+  background-color: var(--color-ink-deep);
+  color: var(--color-canvas);
+}
+
+.railItemActive:hover {
+  background-color: var(--color-ink-deep);
+}
+
+.railIcon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.railLabel {
+  font-size: var(--typography-caption-font-size);
+  white-space: nowrap;
+}
+
+/* 본문만 스크롤한다 */
+.body {
+  flex: 1;
+  min-width: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
+}
+
+/* 구획 본문 — 좌우 여백을 헤더와 맞춘다 */
+.viewBody {
+  padding: 0 var(--spacing-lg);
+}
+
+/* 사진 구획은 목록이 아니라 격자다 — 한 화면에 여러 장이 들어와 스크롤이 준다 */
+.photoGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-xs);
+  padding-top: var(--spacing-md);
 }
 
 /* 탭을 바꿔도 폭은 고정이다. 예전에는 권리분석에서 720px로 넓혔는데, 그건 그 화면이
@@ -27,11 +102,27 @@
   .panel {
     top: auto;
     left: 0;
+    right: 0;
     height: 60%;
     width: auto;
-    border-left: none;
+    border-right: none;
     border-top: 1px solid var(--color-hairline);
+    /* 좁은 화면에서는 레일을 가로로 눕힌다 — 세로로 두면 가뜩이나 좁은 폭을 더 먹는다 */
+    flex-direction: column;
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+
+  .rail {
+    width: auto;
+    flex-direction: row;
+    justify-content: space-around;
+    border-right: none;
+    border-bottom: 1px solid var(--color-hairline-soft);
+    padding: var(--spacing-xs) var(--spacing-md);
+  }
+
+  .railItem {
+    flex: 1;
   }
 }
 
@@ -40,7 +131,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
-  padding: 14px 16px 0;
+  padding: var(--spacing-base) var(--spacing-lg) 0;
 }
 
 .court {
@@ -109,7 +200,7 @@
 /* 일괄매각 고지 — 목록의 가격이 왜 비어 있는지 여기서 설명한다. */
 .lotNotice {
   margin: 10px 16px 0;
-  padding: 10px 12px;
+  padding: var(--spacing-sm) var(--spacing-md);
   border-radius: var(--radius-md);
   background-color: var(--color-surface-soft);
   display: grid;
@@ -138,7 +229,7 @@
   border: none;
   background: none;
   cursor: pointer;
-  padding: 10px 16px;
+  padding: var(--spacing-md) var(--spacing-lg);
   border-top: 1px solid var(--color-hairline-soft);
 }
 
@@ -206,7 +297,7 @@
 
 /* 권리분석 본문(공용 컴포넌트)은 바깥 여백이 없다 — 패널이 정한다. */
 .rightsBody {
-  padding: 14px 16px 0;
+  padding: var(--spacing-base) var(--spacing-lg) 0;
 }
 
 /* 사진은 가로 스크롤 한 줄 — 패널이 좁아 그리드로 깔면 한 장이 너무 작아진다. */
@@ -214,21 +305,21 @@
   display: flex;
   gap: 6px;
   overflow-x: auto;
-  padding: 12px 16px 0;
+  padding: var(--spacing-md) var(--spacing-lg) 0;
   scrollbar-width: thin;
 }
 
 .photo {
-  width: 132px;
-  height: 96px;
+  /* 격자 칸을 채운다 — 가로 스트립이 아니라 2열 격자다(사진 구획) */
+  width: 100%;
+  height: 108px;
   object-fit: cover;
   border-radius: var(--radius-sm);
-  flex-shrink: 0;
   background-color: var(--color-surface-soft);
 }
 
 .priceBlock {
-  padding: 12px 16px 0;
+  padding: var(--spacing-md) var(--spacing-lg) 0;
 }
 
 .priceRow {
@@ -268,7 +359,7 @@
 }
 
 .section {
-  padding: 14px 16px 0;
+  padding: var(--spacing-base) var(--spacing-lg) 0;
 }
 
 .sectionTitle {
