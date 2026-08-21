@@ -6,9 +6,17 @@ import { BacktestModule } from './backtest/backtest.module';
 import { FavoritesModule } from './favorites/favorites.module';
 import { HealthController } from './health/health.controller';
 import { NotificationsModule } from './notifications/notifications.module';
+import { RegistryModule } from './codef-registry/registry.module';
 
 @Module({
-  imports: [AuctionItemsModule, AuthModule, BacktestModule, FavoritesModule, NotificationsModule],
+  imports: [
+    AuctionItemsModule,
+    AuthModule,
+    BacktestModule,
+    FavoritesModule,
+    NotificationsModule,
+    RegistryModule,
+  ],
   controllers: [HealthController],
 })
 export class AppModule {}

@@ -155,7 +155,7 @@
 }
 
 .address {
-  margin: 4px 16px 0;
+  margin: var(--spacing-xxs) var(--spacing-lg) 0;
   font-size: var(--typography-body-md-font-size);
   font-weight: var(--typography-caption-bold-font-weight);
   color: var(--color-ink-deep);
@@ -163,7 +163,7 @@
 }
 
 .meta {
-  margin: 6px 16px 0;
+  margin: var(--spacing-xxs) var(--spacing-lg) 0;
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
@@ -199,7 +199,7 @@
 
 /* 일괄매각 고지 — 목록의 가격이 왜 비어 있는지 여기서 설명한다. */
 .lotNotice {
-  margin: 10px 16px 0;
+  margin: var(--spacing-sm) var(--spacing-lg) 0;
   padding: var(--spacing-sm) var(--spacing-md);
   border-radius: var(--radius-md);
   background-color: var(--color-surface-soft);
@@ -270,7 +270,7 @@
 .tabs {
   display: flex;
   gap: var(--spacing-lg);
-  margin: 12px 16px 0;
+  margin: var(--spacing-md) var(--spacing-lg) 0;
   border-bottom: 1px solid var(--color-hairline-soft);
 }
 
@@ -412,7 +412,7 @@
   margin-top: auto;
   position: sticky;
   bottom: 0;
-  padding: 12px 16px;
+  padding: var(--spacing-md) var(--spacing-lg);
   display: flex;
   align-items: center;
   gap: 8px;

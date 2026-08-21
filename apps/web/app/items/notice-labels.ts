@@ -152,3 +152,20 @@ export function noticeAssumptionLabel(assumption: string): string {
 export function noticeAssumptionReason(assumption: string): string | null {
   return NOTICE_ASSUMPTION_REASON[assumption] ?? null;
 }
+
+/**
+ * 등기 권리 종류 라벨 — 등기부를 실제로 받은 물건에서만 쓴다.
+ * 법원·등기소가 쓰는 명칭을 그대로 따른다. 우리가 다시 이름 붙이면 원문과 대조가 안 된다.
+ */
+export const REGISTERED_RIGHT_LABEL: Record<string, string> = {
+  MORTGAGE: '근저당권',
+  SEIZURE: '압류',
+  PROVISIONAL_SEIZURE: '가압류',
+  COLLATERAL_PROVISIONAL_REGISTRATION: '담보가등기',
+  AUCTION_COMMENCEMENT: '경매개시결정',
+  LEASEHOLD: '임차권',
+  SUPERFICIES: '지상권',
+  EASEMENT: '지역권',
+  PROVISIONAL_REGISTRATION: '가등기',
+  PROVISIONAL_DISPOSITION: '가처분',
+};

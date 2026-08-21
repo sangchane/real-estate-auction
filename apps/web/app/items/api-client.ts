@@ -4,6 +4,7 @@ import type { Affordability } from './affordability';
 import type { ItemKey } from './item-id';
 import type { NoticeAnalysis } from './notice-analysis';
 import type { AuctionItemPhoto } from './photo';
+import type { RegistryState } from './registry';
 
 const API_BASE_URL = process.env.API_BASE_URL ?? 'http://localhost:4000';
 
@@ -151,4 +152,19 @@ export async function fetchRegionCounts(sido?: string): Promise<RegionCount[]> {
     throw new Error(`지역 집계 조회 실패: ${response.status}`);
   }
   return (await response.json()) as RegionCount[];
+}
+
+/**
+ * 등기부 보관본 상태 — **GET은 발급하지 않는다.** 이미 받아 둔 것이 있으면 돌려주고,
+ * 없으면 "받으면 무엇을 조회하게 되는지"만 알려준다. 화면이 이 함수를 여러 번 불러도
+ * 돈이 나가지 않는다 (열람 1건 700원 — D-008).
+ */
+export async function fetchRegistryState(key: ItemKey): Promise<RegistryState | null> {
+  const url = `${API_BASE_URL}/auction-items/${encodeURIComponent(key.courtOfficeCode)}/${encodeURIComponent(key.caseNo)}/${encodeURIComponent(key.itemNo)}/registry`;
+  const response = await fetch(url, { cache: 'no-store' });
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new Error(`등기부 보관본 조회 실패: ${response.status}`);
+  }
+  return (await response.json()) as RegistryState;
 }

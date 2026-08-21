@@ -32,6 +32,9 @@ import {
 } from '../notice-labels';
 import { rightsChecklist, type ChecklistItem, type ChecklistStatus } from '../rights-checklist';
 import { NoticePdfDialog } from './NoticePdfDialog';
+import { RegistrySection } from './RegistrySection';
+import type { ItemKey } from '../item-id';
+import type { RegistryState } from '../registry';
 import styles from './RightsAnalysisView.module.css';
 
 const ASSUMPTION_TONE: Record<NoticeAssumption, BadgeTone> = {
@@ -223,6 +226,8 @@ export function RightsAnalysisView({
   basis,
   affordability,
   noticePdfUrl,
+  itemKey,
+  registry,
 }: {
   /** null이면 명세서를 아직 못 받은 물건이다 — "인수할 권리 없음"과 다르다 */
   analysis: NoticeAnalysis | null;
@@ -234,6 +239,10 @@ export function RightsAnalysisView({
    * PDF 보관(019) 이전에 수집한 명세서는 원문이 없다.
    */
   noticePdfUrl?: string;
+  /** 등기부 블록을 그리려면 필요하다 — 없으면 블록 자체를 그리지 않는다 */
+  itemKey?: ItemKey;
+  /** 등기부 보관본 상태. 서버에서 미리 읽어 넘긴다 (GET은 발급하지 않으므로 무료다) */
+  registry?: RegistryState | null;
 }) {
   if (analysis === null) {
     return (
@@ -302,7 +311,9 @@ export function RightsAnalysisView({
       ) : null}
 
       {/* 확인 순서대로 4항목을 먼저 보여준다 — 값만 나열하면 무엇이 중요한지 드러나지 않는다 */}
-      <ChecklistSection items={rightsChecklist(analysis)} />
+      <ChecklistSection items={rightsChecklist(analysis, registry ?? null)} />
+
+      {itemKey && registry ? <RegistrySection itemKey={itemKey} initial={registry} /> : null}
 
       <BurdenScopeSection />
 

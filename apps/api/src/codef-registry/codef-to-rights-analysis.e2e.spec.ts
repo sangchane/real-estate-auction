@@ -49,10 +49,12 @@ describe('CODEF 등기부 조회 → WP-03 권리분석 E2E', () => {
       new RegistryRequestCache(),
       registryClient,
       mapRegistryResponseToRegisteredRights,
+      // 보관본은 이 시나리오의 관심사가 아니다 — 매번 새로 발급하는 경로를 확인한다
+      { find: async () => null, save: async () => 1 },
     );
 
-    const registeredRights = await registryService.getRegisteredRights('req-1', {
-      caseKey: 'B000210:2023타경4722',
+    const { registeredRights } = await registryService.getRegisteredRights('req-1', {
+      item: { courtOfficeCode: 'B000210', caseNo: '2023타경4722', itemNo: '1' },
       request: { organization: '0002' },
     });
 

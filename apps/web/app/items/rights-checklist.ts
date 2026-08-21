@@ -13,7 +13,8 @@
 // 확인되지 않았다"까지만 말하고, 확인되지 않은 이유를 밝힌다. 빈 값이 "문제 없음"으로 읽히면
 // 안 된다.
 import type { NoticeAnalysis, AnalyzedTenant } from './notice-analysis';
-import { assumedRightsLabel } from './notice-labels';
+import { assumedRightsLabel, REGISTERED_RIGHT_LABEL } from './notice-labels';
+import type { RegistryState } from './registry';
 
 export type ChecklistStatus =
   /** 명세서로 사실이 확인됐다 */
@@ -124,9 +125,33 @@ function priorityItem(analysis: NoticeAnalysis): ChecklistItem {
   };
 }
 
-function assumedRightsItem(analysis: NoticeAnalysis): ChecklistItem {
+function assumedRightsItem(
+  analysis: NoticeAnalysis,
+  registry: RegistryState | null,
+): ChecklistItem {
   const label = assumedRightsLabel(analysis.assumedRightsKind);
   const isNone = analysis.assumedRightsKind === 'NONE';
+
+  // 등기부를 받았으면 "명세서에 적힌 것"이 아니라 등기 목록 자체를 근거로 말할 수 있다.
+  // 이 항목의 한계 문구가 바뀌는 유일한 경우다.
+  if (registry?.status === 'FETCHED' && registry.registeredRights) {
+    const rights = registry.registeredRights;
+    return {
+      key: 'assumedRights',
+      title: '인수되는 권리',
+      status: isNone ? 'CONFIRMED' : 'ATTENTION',
+      summary: isNone
+        ? `등기된 권리 ${rights.length}건은 매각으로 소멸해요.`
+        : `${label ?? '인수권리'}${label ? subjectParticle(label) : '가'} 매수인에게 인수돼요.`,
+      facts: rights
+        .slice(0, 4)
+        .map((right) => `${right.receivedDate} ${REGISTERED_RIGHT_LABEL[right.type] ?? right.type}`),
+      limit:
+        registry.fetchedAt !== null
+          ? `${registry.fetchedAt.slice(0, 10)}에 받은 등기부 기준이에요.`
+          : null,
+    };
+  }
 
   return {
     key: 'assumedRights',
@@ -190,11 +215,14 @@ function possessionItem(analysis: NoticeAnalysis): ChecklistItem {
 }
 
 /** 명세서 분석을 4항목 체크리스트로 정리한다. 순서가 곧 확인 순서다. */
-export function rightsChecklist(analysis: NoticeAnalysis): ChecklistItem[] {
+export function rightsChecklist(
+  analysis: NoticeAnalysis,
+  registry: RegistryState | null = null,
+): ChecklistItem[] {
   return [
     baselineItem(analysis),
     priorityItem(analysis),
-    assumedRightsItem(analysis),
+    assumedRightsItem(analysis, registry),
     possessionItem(analysis),
   ];
 }

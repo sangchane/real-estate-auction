@@ -1,0 +1,121 @@
+/* 등기부 블록 — 돈이 나가는 버튼이 있는 곳이라 확인 단계를 시각적으로 분리한다 */
+.root {
+  margin: 0 0 var(--spacing-xl);
+}
+
+.title {
+  font-size: var(--typography-heading-sm-font-size);
+  font-weight: var(--typography-heading-sm-font-weight);
+  color: var(--color-ink-deep);
+  margin: 0 0 var(--spacing-sm);
+}
+
+.note {
+  font-size: var(--typography-caption-font-size);
+  color: var(--color-steel);
+  margin: 0 0 var(--spacing-xs);
+}
+
+.fetchBlock {
+  background-color: var(--color-surface-soft);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md);
+}
+
+/* 확인 단계는 배경을 바꿔 "다음 클릭은 되돌릴 수 없다"를 눈으로 구분되게 한다 */
+.confirm {
+  background-color: var(--color-canvas);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md);
+  margin-top: var(--spacing-xs);
+}
+
+.confirmLabel {
+  font-size: var(--typography-caption-font-size);
+  color: var(--color-steel);
+  margin: 0 0 var(--spacing-xxs);
+}
+
+.confirmAddress {
+  font-size: var(--typography-body-sm-bold-font-size);
+  font-weight: var(--typography-body-sm-bold-font-weight);
+  color: var(--color-ink-deep);
+  margin: 0 0 var(--spacing-sm);
+  word-break: keep-all;
+}
+
+.actions {
+  display: flex;
+  gap: var(--spacing-xs);
+  flex-wrap: wrap;
+}
+
+.primary,
+.secondary {
+  border: none;
+  border-radius: var(--radius-full);
+  padding: var(--spacing-xs) var(--spacing-base);
+  font-size: var(--typography-body-sm-bold-font-size);
+  font-weight: var(--typography-body-sm-bold-font-weight);
+  cursor: pointer;
+}
+
+.primary {
+  background-color: var(--color-primary-deep);
+  color: var(--color-canvas);
+}
+
+.primary:disabled {
+  background-color: var(--color-disabled-text);
+  cursor: default;
+}
+
+.secondary {
+  background-color: var(--color-surface-soft);
+  color: var(--color-steel);
+}
+
+.error {
+  font-size: var(--typography-caption-font-size);
+  color: var(--color-critical);
+  margin: var(--spacing-xs) 0 0;
+}
+
+.table {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+  margin-bottom: var(--spacing-xs);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background-color: var(--color-surface-soft);
+  border-radius: var(--radius-lg);
+}
+
+.rowDate {
+  flex: none;
+  font-size: var(--typography-caption-font-size);
+  color: var(--color-steel);
+}
+
+.rowMain {
+  flex: 1;
+  min-width: 0;
+}
+
+.rowLabel {
+  font-size: var(--typography-body-sm-bold-font-size);
+  font-weight: var(--typography-body-sm-bold-font-weight);
+  color: var(--color-ink-deep);
+}
+
+.rowDetail {
+  font-size: var(--typography-caption-font-size);
+  color: var(--color-steel);
+  margin: 0;
+}
