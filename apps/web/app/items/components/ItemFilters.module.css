@@ -1,0 +1,89 @@
+/* 목록 필터. 값은 전부 디자인 토큰 참조 — 칩은 buttonPillTab 스펙(radius.full)을 따른다. */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-md);
+}
+
+/* 조건을 좁힌 효과가 숫자로 보여야 한다 — 그래서 건수를 제일 크게 둔다 */
+.count {
+  font-size: var(--typography-heading-sm-font-size);
+  font-weight: var(--typography-heading-sm-font-weight);
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.reset {
+  font-size: var(--typography-body-sm-font-size);
+  color: var(--color-meta-link);
+}
+
+.group {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-md);
+}
+
+.groupLabel {
+  flex-shrink: 0;
+  /* 라벨 폭을 고정해 칩 줄이 세로로 정렬된다 — 축이 여러 개라 어긋나면 읽기 어렵다 */
+  width: 44px;
+  padding-top: var(--spacing-xxs);
+  font-size: var(--typography-body-sm-font-size);
+  color: var(--color-steel);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+}
+
+.chip {
+  /* buttonPillTab 토큰 스펙 */
+  font-size: var(--typography-body-sm-bold-font-size);
+  font-weight: var(--typography-body-sm-bold-font-weight);
+  color: var(--color-ink);
+  background-color: var(--color-canvas);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-full);
+  padding: var(--spacing-xxs) var(--spacing-md);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+
+.chip:hover {
+  background-color: var(--color-surface-soft);
+}
+
+/* buttonPillTabActive — 선택은 반전이다 */
+.chipActive {
+  background-color: var(--color-ink-deep);
+  border-color: var(--color-ink-deep);
+  color: var(--color-canvas);
+}
+
+.chipActive:hover {
+  background-color: var(--color-ink-deep);
+}
+
+@media (max-width: 640px) {
+  .group {
+    flex-direction: column;
+    gap: var(--spacing-xs);
+  }
+
+  .groupLabel {
+    width: auto;
+    padding-top: 0;
+  }
+}

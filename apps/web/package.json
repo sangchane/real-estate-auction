@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint app middleware.ts",
-    "test": "tsc -p tsconfig.test.json && node --test dist-test/app/*.test.js dist-test/app/items/*.test.js dist-test/app/items/map/*.test.js dist-test/app/login/*.test.js dist-test/app/auth/*.test.js"
+    "test": "tsc -p tsconfig.test.json && node --test dist-test/app/*.test.js dist-test/app/items/*.test.js dist-test/app/items/map/*.test.js dist-test/app/items/components/*.test.js dist-test/app/login/*.test.js dist-test/app/auth/*.test.js"
   },
   "dependencies": {
     "@auction/design-tokens": "workspace:*",

@@ -53,6 +53,18 @@ export function usageCategory(usageName: string | null): UsageCategory {
 }
 
 /** 범례·접근성 라벨. 마커에는 아이콘만 보이므로 aria-label로 함께 내보낸다 */
+/**
+ * 범주에 속하는 용도 원문 목록 — 목록 필터가 API에 보낼 값이다.
+ *
+ * API는 범주를 모르고 용도명만 받는다(매핑이 두 곳에 생기면 갈라진다). 이 함수가 그 경계다.
+ * OTHER는 "나머지 전부"라 이름을 열거할 수 없다 — 빈 배열을 주고 화면이 필터에서 뺀다.
+ */
+export function usageNamesOf(category: UsageCategory): string[] {
+  return Object.entries(CATEGORY_BY_USAGE)
+    .filter(([, value]) => value === category)
+    .map(([name]) => name);
+}
+
 export const USAGE_CATEGORY_LABEL: Record<UsageCategory, string> = {
   APARTMENT: '아파트',
   MULTI_HOUSE: '다세대·연립',

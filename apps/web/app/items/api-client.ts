@@ -83,9 +83,44 @@ export async function fetchAffordability(key: ItemKey): Promise<Affordability | 
   return (await response.json()) as Affordability;
 }
 
+export type ItemListSort = 'recent' | 'bidDate' | 'priceAsc' | 'priceDesc' | 'failedDesc';
+
 export interface AuctionItemFilter {
   sido?: string;
   sigungu?: string;
+  /** 용도 원문의 첫 조각 목록 (예: ['아파트','다세대']) — 범주 묶기는 usage-category가 안다 */
+  usages?: string[];
+  minPrice?: number;
+  maxPrice?: number;
+  sort?: ItemListSort;
+}
+
+/** 목록·건수가 같은 조건을 보게 쿼리를 한 곳에서 만든다 — 갈라지면 "전체 N건"이 어긋난다 */
+function filterParams(filter: AuctionItemFilter): URLSearchParams {
+  const params = new URLSearchParams();
+  if (filter.sido) params.set('sido', filter.sido);
+  if (filter.sigungu) params.set('sigungu', filter.sigungu);
+  if (filter.usages && filter.usages.length > 0) params.set('usage', filter.usages.join(','));
+  if (filter.minPrice !== undefined) params.set('minPrice', String(filter.minPrice));
+  if (filter.maxPrice !== undefined) params.set('maxPrice', String(filter.maxPrice));
+  return params;
+}
+
+/** 같은 조건의 전체 건수 — 조회 실패는 화면을 막지 않고 null로 둔다(건수는 보조 정보다) */
+export async function fetchAuctionItemCount(
+  filter: AuctionItemFilter = {},
+): Promise<number | null> {
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/auction-items/count?${filterParams(filter).toString()}`,
+      { cache: 'no-store' },
+    );
+    if (!response.ok) return null;
+    const body = (await response.json()) as { count: number };
+    return body.count;
+  } catch {
+    return null;
+  }
 }
 
 export async function fetchAuctionItems(
@@ -93,9 +128,10 @@ export async function fetchAuctionItems(
   offset: number,
   filter: AuctionItemFilter = {},
 ): Promise<AuctionItem[]> {
-  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
-  if (filter.sido) params.set('sido', filter.sido);
-  if (filter.sigungu) params.set('sigungu', filter.sigungu);
+  const params = filterParams(filter);
+  params.set('limit', String(limit));
+  params.set('offset', String(offset));
+  if (filter.sort) params.set('sort', filter.sort);
   const response = await fetch(`${API_BASE_URL}/auction-items?${params.toString()}`, { cache: 'no-store' });
   if (!response.ok) {
     throw new Error(`물건 목록 조회 실패: ${response.status}`);
