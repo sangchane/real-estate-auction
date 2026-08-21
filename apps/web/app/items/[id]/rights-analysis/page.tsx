@@ -8,6 +8,7 @@ import { fetchAffordability, fetchAuctionItem, fetchNoticeAnalysis } from '../..
 import { AffordabilityCustomBid } from '../../components/AffordabilityCustomBid';
 import { RightsAnalysisView } from '../../components/RightsAnalysisView';
 import { decodeItemId } from '../../item-id';
+import { noticePdfSrc } from '../../photo';
 import { NOINDEX } from '../../../seo';
 import styles from './page.module.css';
 
@@ -34,6 +35,7 @@ export default async function RightsAnalysisPage({ params }: { params: Promise<{
         analysis={analysis}
         basis={{ minimumSalePrice: item.minimumSalePrice }}
         affordability={affordability}
+        noticePdfUrl={noticePdfSrc(key)}
       />
       {/* 직접 입력은 상세에서만 — 시나리오 정의는 API 한 곳에 있다 */}
       {analysis !== null ? (

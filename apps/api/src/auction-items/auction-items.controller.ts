@@ -149,4 +149,31 @@ export class AuctionItemsController {
     }
     return analysis;
   }
+
+  /**
+   * 매각물건명세서 PDF 원본. 권리분석 화면이 팝업으로 띄워 사용자가 파싱 결과를 원문과 대조한다.
+   *
+   * 명세서를 받았어도 PDF가 없을 수 있다 — 텍스트 레이어 경로로 읽었거나, 019 이전 수집분이거나,
+   * 배당종결로 지워진 경우다. 그때는 404이고 화면은 원문 보기 버튼을 감춘다.
+   */
+  @Get(':courtOfficeCode/:caseNo/:itemNo/notice-pdf')
+  async noticePdf(
+    @Param('courtOfficeCode') courtOfficeCode: string,
+    @Param('caseNo') caseNo: string,
+    @Param('itemNo') itemNo: string,
+    @Res() res: ServerResponse,
+  ): Promise<void> {
+    const pdf = await this.repository.findNoticePdf(courtOfficeCode, caseNo, itemNo);
+    if (!pdf) {
+      throw new NotFoundException(`명세서 원문을 찾을 수 없어요: ${caseNo} ${itemNo}`);
+    }
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'application/pdf');
+    // 브라우저 내장 뷰어로 열리게 한다(inline) — 확대·축소는 그 뷰어가 제공한다
+    res.setHeader('Content-Disposition', 'inline');
+    // 같은 기일의 명세서는 바뀌지 않는다. 다만 배당종결이면 지워지므로 immutable은 쓰지 않는다
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.setHeader('Content-Length', pdf.bytes.length);
+    res.end(pdf.bytes);
+  }
 }

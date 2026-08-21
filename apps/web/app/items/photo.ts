@@ -18,3 +18,18 @@ export function photoProxySrc(id: number): string {
 export function photoAlt(photo: Pick<AuctionItemPhoto, 'caption' | 'categoryName'>): string {
   return photo.caption?.trim() || photo.categoryName?.trim() || '경매물건 사진';
 }
+
+/**
+ * 매각물건명세서 원문 PDF 경로 — 권리분석 화면의 원문 보기 팝업이 쓴다.
+ *
+ * 사진과 같은 이유로 프록시 경로를 쓴다(브라우저는 CORS 때문에 API 오리진을 직접 못 부른다).
+ * 사건번호에 한글이 들어가므로 반드시 인코딩한다 — `2024타경149215` 같은 값이다.
+ */
+export function noticePdfSrc(key: {
+  courtOfficeCode: string;
+  caseNo: string;
+  itemNo: string;
+}): string {
+  const path = [key.courtOfficeCode, key.caseNo, key.itemNo].map(encodeURIComponent).join('/');
+  return `/api/auction-items/${path}/notice-pdf`;
+}

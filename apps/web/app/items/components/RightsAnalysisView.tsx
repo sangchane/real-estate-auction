@@ -30,6 +30,7 @@ import {
   riskFlagLabels,
   type BurdenStatus,
 } from '../notice-labels';
+import { NoticePdfDialog } from './NoticePdfDialog';
 import styles from './RightsAnalysisView.module.css';
 
 const ASSUMPTION_TONE: Record<NoticeAssumption, BadgeTone> = {
@@ -176,12 +177,18 @@ export function RightsAnalysisView({
   analysis,
   basis,
   affordability,
+  noticePdfUrl,
 }: {
   /** null이면 명세서를 아직 못 받은 물건이다 — "인수할 권리 없음"과 다르다 */
   analysis: NoticeAnalysis | null;
   basis?: RightsBasis;
   /** 실부담 시나리오 — 없으면(미로딩·조회 실패) 섹션을 그리지 않는다 */
   affordability?: Affordability | null;
+  /**
+   * 명세서 PDF 원문 주소. 없으면 원문 보기 버튼을 감춘다 — 텍스트 레이어로 읽었거나
+   * PDF 보관(019) 이전에 수집한 명세서는 원문이 없다.
+   */
+  noticePdfUrl?: string;
 }) {
   if (analysis === null) {
     return (
@@ -211,6 +218,12 @@ export function RightsAnalysisView({
         매각물건명세서로만 계산했어요. 등기부는 아직 연동하지 않아서 등기 권리와 채권액은 빠져
         있어요.
       </p>
+      {/* 계산의 근거가 된 문서를 사용자가 직접 확인할 수 있게 한다 */}
+      {noticePdfUrl ? (
+        <p className={styles.sourceActions}>
+          <NoticePdfDialog src={noticePdfUrl} />
+        </p>
+      ) : null}
 
       <section className={styles.summaryCard}>
         <p className={styles.summaryLabel}>

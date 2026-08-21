@@ -212,3 +212,8 @@
   text-align: center;
   margin-top: var(--spacing-lg);
 }
+
+/* 원문 보기 버튼 줄 — 고지 문구 바로 아래에 둔다(계산 근거를 같은 자리에서 확인) */
+.sourceActions {
+  margin: 0 0 var(--spacing-base);
+}

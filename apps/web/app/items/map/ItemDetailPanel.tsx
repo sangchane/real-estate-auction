@@ -29,7 +29,7 @@ import { encodeItemId } from '../item-id';
 import type { Affordability } from '../affordability';
 import type { NoticeAnalysis } from '../notice-analysis';
 import { assumedRightsLabel, riskFlagLabels, shortUsageName, tenantLabel } from '../notice-labels';
-import { photoAlt, photoProxySrc, type AuctionItemPhoto } from '../photo';
+import { noticePdfSrc, photoAlt, photoProxySrc, type AuctionItemPhoto } from '../photo';
 import { isBulkLot } from './bulk-lot';
 import styles from './ItemDetailPanel.module.css';
 
@@ -422,6 +422,7 @@ function ItemDetail({
                 analysis={analysis}
                 basis={{ minimumSalePrice: item.minimumSalePrice }}
                 affordability={affordability}
+                noticePdfUrl={noticePdfSrc(item)}
               />
               {/* 상세 페이지와 같은 입찰가 계산기 — 패널이 기본 동선이라 여기서도 완결돼야 한다 */}
               {analysis !== null ? (

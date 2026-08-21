@@ -292,6 +292,11 @@ interface PhotoBytesRow extends QueryResultRow {
   bytes: Buffer;
 }
 
+interface NoticePdfRow extends QueryResultRow {
+  bytes: Buffer;
+  documentDate: Date | null;
+}
+
 interface AffordabilityItemRow extends QueryResultRow {
   appraisalAmount: string | number | null;
   minimumSalePrice: string | number | null;
@@ -576,6 +581,32 @@ export class AuctionItemsRepository {
     );
     const row = result.rows[0];
     return row ? { contentType: row.contentType, bytes: row.bytes } : null;
+  }
+
+  /**
+   * 매각물건명세서 PDF 원본 — 권리분석 화면에서 사용자가 파싱 결과를 원문과 대조하는 데 쓴다.
+   *
+   * 여러 기일의 명세서가 쌓일 수 있어 최신 작성분을 준다. PDF를 못 받은 명세서(텍스트 레이어로
+   * 읽었거나 019 이전 수집분)와 배당종결로 지워진 것은 null이다.
+   */
+  async findNoticePdf(
+    courtOfficeCode: string,
+    caseNo: string,
+    itemNo: string,
+  ): Promise<{ bytes: Buffer; documentDate: Date | null } | null> {
+    const result = await this.pool.query<NoticePdfRow>(
+      `SELECT n.pdf_bytes AS bytes, n.document_date AS "documentDate"
+         FROM auction_item_notice n
+         JOIN auction_item ai ON ai.id = n.auction_item_id
+         JOIN auction_case ac ON ac.id = ai.auction_case_id
+        WHERE ac.court_office_code = $1 AND ac.case_no = $2 AND ai.item_no = $3
+          AND n.pdf_bytes IS NOT NULL
+        ORDER BY n.document_date DESC NULLS LAST
+        LIMIT 1`,
+      [courtOfficeCode, caseNo, itemNo],
+    );
+    const row = result.rows[0];
+    return row ? { bytes: row.bytes, documentDate: row.documentDate } : null;
   }
 
   /** 지도 뷰포트(경위도 사각형) 안의 물건을 찾는다 — 지도 홈(F-01, RN)의 팬/줌 갱신용 */
