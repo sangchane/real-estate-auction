@@ -9,6 +9,7 @@
 
 import { useState, type ReactNode } from 'react';
 import { Badge, type BadgeTone } from './Badge';
+import { GLOSSARY, type GlossaryKey } from '../glossary';
 import {
   formatRatioRange,
   formatWonRangeCompact,
@@ -55,6 +56,39 @@ const BURDEN_TONE: Record<BurdenStatus, BadgeTone> = {
 };
 
 /**
+ * 용어 설명 — 문장에서 뺀 뜻풀이를 ? 뒤에 둔다.
+ *
+ * 설명을 문장 안에 괄호로 넣으면 요약 한 줄이 세 줄이 된다. 용어를 아는 사람에게는 소음이고
+ * 모르는 사람에게는 문장이 안 읽힌다. 필요한 사람만 펼쳐 보게 한다.
+ */
+function TermHelp({ terms }: { terms: GlossaryKey[] }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <span className={styles.termWrap}>
+      <button
+        type="button"
+        className={styles.termButton}
+        aria-expanded={open}
+        aria-label="용어 설명 보기"
+        onClick={() => setOpen(!open)}
+      >
+        ?
+      </button>
+      {open ? (
+        <span className={styles.termPopover} role="note">
+          {terms.map((term) => (
+            <span className={styles.termRow} key={term}>
+              <b className={styles.termName}>{term}</b> {GLOSSARY[term]}
+            </span>
+          ))}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+/**
  * 접이식 섹션 — 요약은 늘 보이고 근거는 접는다.
  *
  * 길이 문제의 핵심 장치다. 전에는 13개 블록이 전부 펼쳐져 있어 스크롤이 길고, 무엇이 답이고
@@ -76,6 +110,8 @@ function Section({
     <section className={styles.qSection}>
       <div className={styles.qHead}>
         <h3 className={styles.qTitle}>{section.title}</h3>
+        {section.terms.length > 0 ? <TermHelp terms={section.terms} /> : null}
+        <span className={styles.qSpacer} />
         {section.state ? (
           <Badge tone={section.state === '확인됨' ? 'muted' : 'critical'}>{section.state}</Badge>
         ) : null}

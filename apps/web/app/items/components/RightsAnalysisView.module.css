@@ -404,3 +404,60 @@
   margin: 0 0 var(--spacing-sm);
   word-break: keep-all;
 }
+
+/* 용어 설명 ? — 문장에서 뺀 뜻풀이를 필요한 사람만 펼쳐 본다 */
+.termWrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.termButton {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-full);
+  background: none;
+  color: var(--color-steel);
+  font-size: var(--typography-caption-font-size);
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.termButton:hover {
+  border-color: var(--color-steel);
+  color: var(--color-ink-deep);
+}
+
+.termPopover {
+  position: absolute;
+  top: calc(100% + var(--spacing-xxs));
+  left: 0;
+  z-index: 5;
+  width: 260px;
+  max-width: 70vw;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background-color: var(--color-canvas);
+  border: 1px solid var(--color-hairline-soft);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.termRow {
+  font-size: var(--typography-caption-font-size);
+  color: var(--color-steel);
+  line-height: 1.5;
+  word-break: keep-all;
+}
+
+.termName {
+  color: var(--color-ink-deep);
+}
+
+/* 제목·? 는 왼쪽, 상태 배지는 오른쪽 끝으로 민다 */
+.qSpacer {
+  flex: 1;
+}

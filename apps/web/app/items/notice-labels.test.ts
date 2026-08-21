@@ -57,10 +57,12 @@ test('shortUsageName은 값이 없거나 비면 null', () => {
   assert.equal(shortUsageName('  '), null);
 });
 
-test('tenantLabel은 0명과 미확인을 구분한다', () => {
+test('tenantLabel은 없음·있음·미확인을 구분하고 사람 수를 세지 않는다', () => {
   // 0명 = 법원이 조사했는데 없더라 / null = 명세서를 못 받아 말할 수 없다
   assert.equal(tenantLabel(0), '점유자 없음');
-  assert.equal(tenantLabel(2), '점유자 2명');
+  // HUG 보증보험에 들면 같은 세입자가 등기·권리신고 두 줄이 된다 — 세면 "2명"이 나온다
+  assert.equal(tenantLabel(1), '점유자 있음');
+  assert.equal(tenantLabel(2), '점유자 있음');
   assert.equal(tenantLabel(null), null);
 });
 

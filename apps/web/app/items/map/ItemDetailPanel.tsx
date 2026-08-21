@@ -29,7 +29,8 @@ import { encodeItemId } from '../item-id';
 import type { Affordability } from '../affordability';
 import type { NoticeAnalysis } from '../notice-analysis';
 import { assumedRightsLabel, riskFlagLabels, shortUsageName, tenantLabel } from '../notice-labels';
-import { noticePdfSrc, photoAlt, photoProxySrc, type AuctionItemPhoto } from '../photo';
+import { noticePdfSrc, type AuctionItemPhoto } from '../photo';
+import { PhotoCarousel } from '../components/PhotoCarousel';
 import { isBulkLot } from './bulk-lot';
 import styles from './ItemDetailPanel.module.css';
 
@@ -66,7 +67,6 @@ export interface PanelItem {
  */
 const PANEL_VIEWS = [
   { key: 'summary', icon: '🏠', label: '개요' },
-  { key: 'photos', icon: '🖼', label: '사진' },
   { key: 'rights', icon: '⚖', label: '권리분석' },
   { key: 'cost', icon: '💰', label: '실부담' },
 ] as const;
@@ -357,6 +357,12 @@ function ItemDetail({
 
       {view === 'summary' ? (
         <>
+          {/* 사진을 개요 맨 위에 둔다 — 별도 탭으로 빼 두면 아무도 열어보지 않고,
+              경매에서 사진은 "이 집이 어떤 상태인가"를 보는 거의 유일한 수단이다 */}
+          <div className={styles.viewBody}>
+            <PhotoCarousel photos={photos} />
+          </div>
+
           <div className={styles.priceBlock}>
             <div className={styles.priceRow}>
               <span className={styles.price}>
@@ -412,25 +418,7 @@ function ItemDetail({
             </div>
           </section>
         </>
-      ) : view === 'photos' ? (
-        <div className={styles.viewBody}>
-          {photos.length > 0 ? (
-            <div className={styles.photoGrid}>
-              {photos.map((photo) => (
-                // next/image 대신 <img> — 상세 화면과 같은 프록시 경로를 그대로 쓴다
-                <img
-                  key={photo.id}
-                  className={styles.photo}
-                  src={photoProxySrc(photo.id)}
-                  alt={photoAlt(photo)}
-                  loading="lazy"
-                />
-              ))}
-            </div>
-          ) : (
-            <p className={styles.unknown}>아직 사진을 받지 못했어요.</p>
-          )}
-        </div>
+
       ) : view === 'cost' ? (
         <div className={styles.viewBody}>
           {analysis === undefined ? (

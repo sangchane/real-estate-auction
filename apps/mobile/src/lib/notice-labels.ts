@@ -49,8 +49,10 @@ export function shortUsageName(usageName: string | null): string | null {
 
 /** 0명("조사했는데 없음")과 null("명세서 미확인")은 다르다. */
 export function tenantLabel(tenantCount: number | null): string | null {
+  // 사람 수를 세지 않는다 — HUG 보증보험에 들면 같은 세입자가 등기·권리신고 두 줄이 되어
+  // "점유자 2명"이 된다 (웹 notice-labels.ts에 같은 설명이 있다)
   if (tenantCount === null) return null;
-  return tenantCount === 0 ? '점유자 없음' : `점유자 ${tenantCount}명`;
+  return tenantCount === 0 ? '점유자 없음' : '점유자 있음';
 }
 
 /**

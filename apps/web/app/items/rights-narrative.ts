@@ -14,6 +14,7 @@ import { formatWonRangeCompact, summaryScenario } from './affordability';
 import { formatWonCompact } from './format';
 import { assumedHeadline, assumedTotal, type NoticeAnalysis } from './notice-analysis';
 import { assumedRightsLabel } from './notice-labels';
+import type { GlossaryKey } from './glossary';
 import type { RegistryState } from './registry';
 
 /** 결론 카드 — 큰 숫자 하나와, 그 숫자가 무슨 돈인지 말하는 문장들 */
@@ -36,7 +37,7 @@ export function rightsConclusion(analysis: NoticeAnalysis | null): RightsConclus
       headline: '아직 알 수 없어요',
       isAmount: false,
       body: [
-        '이 물건은 매각물건명세서(법원이 이 물건에 대해 공식으로 알리는 문서)를 아직 받지 못했어요.',
+        '이 물건의 매각물건명세서를 아직 받지 못했어요.',
         '명세서는 입찰기일 1주 전부터 열람할 수 있어요.',
       ],
     };
@@ -50,7 +51,7 @@ export function rightsConclusion(analysis: NoticeAnalysis | null): RightsConclus
       headline: formatWonCompact(headline.amount),
       isAmount: true,
       body: [
-        '먼저 살던 세입자의 보증금이에요. 낙찰받으면 낙찰가와 별도로 매수인(낙찰받은 사람)이 세입자에게 돌려줘야 해요. 법원 문서에는 "인수"라고 적혀 있어요.',
+        '먼저 살던 세입자의 보증금이에요. 낙찰가와 별도로 매수인이 세입자에게 돌려줘야 해요.',
         // 하한이라는 사실은 각주가 아니라 카드 안에 둔다 — 숫자만 읽고 지나가면 과소평가한다
         ...(headline.isLowerBound
           ? ['금액이 확정되지 않은 세입자가 더 있어, 실제로는 이 금액보다 클 수 있어요.']
@@ -66,7 +67,8 @@ export function rightsConclusion(analysis: NoticeAnalysis | null): RightsConclus
       isAmount: false,
       body: [
         // "0원"으로 읽히는 것을 막는 문장이다. 이 화면에서 가장 큰 오독 위험이라 본문에 둔다.
-        '돌려줘야 할 수 있는 보증금이 있어요. 0원이라는 뜻이 아니에요 — 세입자가 배당(낙찰대금을 나눠주는 절차)에서 얼마를 돌려받는지는 등기부의 빚 목록이 있어야 계산할 수 있어요.',
+        '돌려줘야 할 수 있는 보증금이 있어요. 0원이라는 뜻이 아니에요.',
+        '세입자가 배당에서 얼마를 돌려받는지는 등기부의 빚 목록이 있어야 계산할 수 있어요.',
       ],
     };
   }
@@ -76,7 +78,8 @@ export function rightsConclusion(analysis: NoticeAnalysis | null): RightsConclus
     headline: '0원 — 명세서 기준',
     isAmount: false,
     body: [
-      '명세서에서는 떠안는 보증금이 확인되지 않았어요. 다만 이 계산은 법원 명세서만 본 결과라, 등기부의 권리까지 확인한 것은 아니에요.',
+      '명세서에서는 떠안는 보증금이 확인되지 않았어요.',
+      '다만 명세서만 본 결과라 등기부의 권리까지 확인한 것은 아니에요.',
     ],
   };
 }
@@ -87,8 +90,13 @@ export interface RightsSection {
   key: SectionKey;
   /** 질문형 제목 — 도메인 용어가 아니라 사용자의 질문을 그대로 쓴다 */
   title: string;
-  /** 접기 전에도 항상 보이는 요약. 이것만 읽어도 뜻이 통해야 한다 */
+  /**
+   * 접기 전에도 항상 보이는 요약. **요점만 쓴다** — 용어 설명을 문장에 끼워 넣으면
+   * 한 문장이 세 줄이 되어 요약이 요약이 아니게 된다. 설명은 terms로 빼서 ? 뒤에 둔다.
+   */
   summary: string[];
+  /** 이 섹션에서 쓴 용어들 — 제목 옆 ? 버튼이 보여준다 */
+  terms: GlossaryKey[];
   /** 접었을 때 제목 옆에 붙는 상태. 없으면 붙이지 않는다 */
   state: '확인됨' | '미확인' | null;
 }
@@ -100,6 +108,7 @@ export function occupantsSection(analysis: NoticeAnalysis | null): RightsSection
       key: 'occupants',
       title: '지금 살고 있는 사람',
       summary: ['명세서를 아직 받지 못해서 세입자 정보를 알 수 없어요.'],
+      terms: [],
       state: '미확인',
     };
   }
@@ -111,23 +120,27 @@ export function occupantsSection(analysis: NoticeAnalysis | null): RightsSection
       key: 'occupants',
       title: '지금 살고 있는 사람',
       summary: recorded
-        ? [
-            '법원 조사에서 세입자가 확인되지 않았어요. 빈집이라는 뜻은 아니에요 — 누가 살고 있는지는 현장에서만 알 수 있어요.',
-          ]
+        ? ['법원 조사에서 세입자가 확인되지 않았어요. 빈집이라는 뜻은 아니에요.']
         : ['세입자 정보를 읽지 못했어요. 없다는 뜻이 아니에요.'],
+      terms: [],
       state: recorded ? '확인됨' : '미확인',
     };
   }
 
+  // **사람 수를 세지 않는다.** 명세서의 행은 "사람"이 아니라 "그 집에 대한 기록"이다 —
+  // 전세보증보험(HUG)에 들면 같은 세입자가 등기·권리신고로 두 줄이 되고, 점유부분도
+  // "601호"와 "전유부분전부"처럼 같은 곳을 다르게 적어 실측 1,504건이 두 세대처럼 보였다.
+  // 한 물건은 대개 한 세대이므로, 세는 대신 그 집이 어떤 상태인지를 말한다.
   const priority = tenants.filter((tenant) => tenant.hasPriority === true).length;
   if (priority === 0) {
     return {
       key: 'occupants',
       title: '지금 살고 있는 사람',
       summary: [
-        `세입자 ${tenants.length}명이 살고 있어요. 기준 날짜보다 늦게 전입해서, 보증금은 낙찰대금에서 해결되고 매수인이 떠안지 않아요.`,
-        '다만 집을 비우는 일(명도)은 낙찰 후에 남아요.',
+        '확인된 세입자는 기준 날짜보다 늦게 전입했어요. 보증금은 낙찰대금에서 해결되고 매수인이 떠안지 않아요.',
+        '다만 집을 비우는 일은 낙찰 후에 남아요.',
       ],
+      terms: ['명도', '매수인'],
       state: '확인됨',
     };
   }
@@ -136,8 +149,9 @@ export function occupantsSection(analysis: NoticeAnalysis | null): RightsSection
     key: 'occupants',
     title: '지금 살고 있는 사람',
     summary: [
-      `세입자 ${tenants.length}명이 살고 있어요. 그중 ${priority}명은 기준 날짜보다 먼저 전입해서, 보증금을 돌려받을 때까지 집을 비워주지 않아도 돼요. 이런 힘을 대항력이라고 해요.`,
+      '기준 날짜보다 먼저 전입한 세입자가 있어요. 보증금을 돌려받을 때까지 집을 비워주지 않아도 돼요.',
     ],
+    terms: ['대항력', '말소기준', '매수인'],
     state: '확인됨',
   };
 }
@@ -150,15 +164,13 @@ export function debtsSection(
   const summary: string[] = [];
 
   if (analysis?.baselineDate != null) {
-    summary.push(
-      `${analysis.baselineDate}에 설정된 권리가 기준이에요 — 이것을 말소기준(권리가 남는지 지워지는지 가르는 기준 날짜)이라고 해요.`,
-    );
+    summary.push(`${analysis.baselineDate}에 설정된 권리가 기준이에요.`);
   } else {
     summary.push('명세서에 기준 날짜가 적혀 있지 않아, 어느 권리가 지워지는지 판정할 수 없어요.');
   }
 
   // 규칙은 등기부 없이도 확정된 사실이라 늘 말할 수 있다 — "근저당도 내가 갚나"에 대한 답이다
-  summary.push('은행 빚(근저당)·압류·가압류는 낙찰되면 지워져요. 매수인이 대신 갚지 않아요.');
+  summary.push('은행 빚·압류·가압류는 낙찰되면 지워져요. 매수인이 대신 갚지 않아요.');
 
   if (analysis !== null) {
     const label = assumedRightsLabel(analysis.assumedRightsKind);
@@ -167,7 +179,7 @@ export function debtsSection(
     } else if (label !== null) {
       summary.push(`다만 법원이 "${label}는 매수인이 인수한다"고 적었어요.`);
     } else {
-      summary.push('명세서의 인수권리 란이 비어 있어요 — 없다는 뜻인지 확인이 필요해요.');
+      summary.push('명세서의 인수권리 란이 비어 있어요 — 없다는 뜻인지 확인해야 해요.');
     }
   }
 
@@ -181,6 +193,7 @@ export function debtsSection(
     key: 'debts',
     title: '집에 걸려 있는 빚과 권리',
     summary,
+    terms: ['말소기준', '인수', '소멸', '근저당'],
     // 등기부를 받아야 "확인됨"이다. 명세서만으로는 등기 목록을 알 수 없다.
     state: registry?.status === 'FETCHED' ? '확인됨' : '미확인',
   };
@@ -201,9 +214,8 @@ export function costSection(affordability: Affordability | null): RightsSection 
     return {
       key: 'cost',
       title: '결국 얼마가 드나',
-      summary: [
-        '일괄매각 물건이라 최저가가 묶음 전체 값이에요. 목적물 하나 기준으로 계산하면 숫자가 틀리게 나와서 계산하지 않아요.',
-      ],
+      summary: ['일괄매각 물건이라 최저가가 묶음 전체 값이에요. 하나 기준으로는 계산하지 않아요.'],
+      terms: [],
       state: '미확인',
     };
   }
@@ -214,6 +226,7 @@ export function costSection(affordability: Affordability | null): RightsSection 
       key: 'cost',
       title: '결국 얼마가 드나',
       summary: ['시나리오를 만들 가격 정보가 부족해요.'],
+      terms: [],
       state: '미확인',
     };
   }
@@ -224,8 +237,10 @@ export function costSection(affordability: Affordability | null): RightsSection 
     key: 'cost',
     title: '결국 얼마가 드나',
     summary: [
-      `${formatWonCompact(scenario.bidPrice)}에 낙찰되면 총 ${total}이 들어요 — 낙찰가 + 돌려줄 보증금 + 세금·비용이에요.`,
+      `${formatWonCompact(scenario.bidPrice)}에 낙찰되면 총 ${total}이 들어요.`,
+      '낙찰가 + 돌려줄 보증금 + 세금·비용이에요.',
     ],
+    terms: ['감정가'],
     state: '확인됨',
   };
 }

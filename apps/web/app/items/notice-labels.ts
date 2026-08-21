@@ -53,12 +53,19 @@ export function shortUsageName(usageName: string | null): string | null {
 }
 
 /**
- * 점유자 수 라벨. 0명은 "법원이 조사했는데 없더라"라서 표기 가치가 있고,
- * null은 "명세서를 못 받았다"라서 임차인 유무를 말할 수 없다.
+ * 점유자 라벨 — **사람 수를 세지 않는다.**
+ *
+ * 명세서의 행은 "사람"이 아니라 "그 집에 대한 기록"이다. 전세보증보험(HUG)에 들면 같은
+ * 세입자가 등기·권리신고로 두 줄이 되어 "점유자 2명"이 된다. 실측 3,588건 중 743건이
+ * 호수는 하나인데 행이 여럿이었고, 점유부분도 "601호"와 "전유부분전부"처럼 같은 곳을
+ * 다르게 적어 세대 수로 세도 틀린다. 한 물건은 대개 한 세대다.
+ *
+ * 0건은 "법원이 조사했는데 없더라"라서 표기 가치가 있고, null은 "명세서를 못 받았다"라서
+ * 점유자 유무 자체를 말할 수 없다.
  */
 export function tenantLabel(tenantCount: number | null): string | null {
   if (tenantCount === null) return null;
-  return tenantCount === 0 ? '점유자 없음' : `점유자 ${tenantCount}명`;
+  return tenantCount === 0 ? '점유자 없음' : '점유자 있음';
 }
 
 /**

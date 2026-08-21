@@ -67,7 +67,7 @@ test('금액이 나올 때 그게 무슨 돈인지 같은 카드에서 말한다
 
   assert.match(result.headline, /6,500만/);
   // 숫자만 있고 뜻이 없으면 "무슨 말인지 모르겠다"가 된다
-  assert.match(result.body.join(' '), /매수인\(낙찰받은 사람\)이 세입자에게 돌려줘야/);
+  assert.match(result.body.join(' '), /매수인이 세입자에게 돌려줘야/);
 });
 
 test('하한이라는 사실을 각주가 아니라 카드 본문에 넣는다', () => {
@@ -109,20 +109,38 @@ test('명세서를 못 받았으면 0원이라고 말하지 않는다', () => {
   assert.match(result.body.join(' '), /아직 받지 못했어요/);
 });
 
-test('대항력을 용어만 던지지 않고 뜻을 풀어 쓴다', () => {
+test('대항력은 용어 대신 결과로 말하고, 뜻은 ? 뒤에 둔다', () => {
   const section = occupantsSection(
     analysis({ tenants: [tenant({ tenantSeq: 1, hasPriority: true })] }),
   );
 
+  // 요약은 결과만 말한다 — 뜻풀이를 문장에 넣으면 한 줄이 세 줄이 된다
   assert.match(section.summary.join(' '), /집을 비워주지 않아도 돼요/);
-  assert.match(section.summary.join(' '), /대항력/);
+  assert.ok(section.terms.includes('대항력'));
 });
 
-test('세입자가 다 기준일 이후여도 명도가 남는다고 말한다', () => {
+test('세입자가 다 기준일 이후여도 집을 비우는 일이 남는다고 말한다', () => {
   const section = occupantsSection(analysis({ tenants: [tenant({ tenantSeq: 1 })] }));
 
   assert.match(section.summary.join(' '), /떠안지 않아요/);
-  assert.match(section.summary.join(' '), /명도/);
+  assert.match(section.summary.join(' '), /집을 비우는 일은 낙찰 후에 남아요/);
+  assert.ok(section.terms.includes('명도'));
+});
+
+test('세입자를 사람 수로 세지 않는다 — 명세서 행은 사람이 아니라 기록이다', () => {
+  // HUG 전세보증보험에 들면 같은 세입자가 등기·권리신고로 두 줄이 된다.
+  // 점유부분도 "601호"와 "전유부분전부"처럼 같은 곳을 다르게 적어 실측 1,504건이
+  // 두 세대처럼 보였다. 한 물건은 대개 한 세대다.
+  const section = occupantsSection(
+    analysis({
+      tenants: [
+        tenant({ tenantSeq: 1, hasPriority: true }),
+        tenant({ tenantSeq: 2, hasPriority: true }),
+      ],
+    }),
+  );
+
+  assert.doesNotMatch(section.summary.join(' '), /\d+명/);
 });
 
 test('세입자 없음과 못 읽음을 다르게 말한다', () => {
@@ -225,5 +243,27 @@ test('판단·권유 어휘를 쓰지 않는다 (변호사법 §109 — D-011)',
         assert.ok(!text.includes(word), `금칙어 "${word}"가 들어갔다: ${text}`);
       }
     }
+  }
+});
+
+test('화면 문구에 마크다운 기호를 넣지 않는다', () => {
+  // 화면은 문자열을 그대로 그린다 — "**0원이라는 뜻이 아니에요.**"가 별표째 보였다
+  const cases: (NoticeAnalysis | null)[] = [
+    null,
+    analysis(),
+    analysis({ tenants: [tenant({ tenantSeq: 1, assumption: 'ASSUMED_AMOUNT_UNKNOWN', assumedAmount: null })] }),
+    analysis({ tenants: [tenant({ tenantSeq: 1, assumption: 'ASSUMED_FULL', assumedAmount: 1000 })] }),
+  ];
+
+  for (const input of cases) {
+    const text = [
+      ...rightsConclusion(input).body,
+      rightsConclusion(input).headline,
+      ...occupantsSection(input).summary,
+      ...debtsSection(input, null).summary,
+    ].join(' ');
+
+    assert.ok(!text.includes('**'), `마크다운 강조가 들어갔다: ${text}`);
+    assert.ok(!text.includes('__'), `마크다운 강조가 들어갔다: ${text}`);
   }
 });

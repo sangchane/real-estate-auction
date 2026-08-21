@@ -1,0 +1,152 @@
+/* 사진 캐러셀 — 격자 썸네일로는 무엇을 찍은 사진인지 알아볼 수 없었다. 한 번에 한 장, 크게 */
+.root {
+  position: relative;
+  margin-top: var(--spacing-md);
+}
+
+.track {
+  display: flex;
+  gap: var(--spacing-xs);
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  /* 드래그 중 텍스트·이미지가 선택되면 끌기가 끊긴다 */
+  user-select: none;
+  cursor: grab;
+}
+
+.track::-webkit-scrollbar {
+  display: none;
+}
+
+.track:active {
+  cursor: grabbing;
+}
+
+.slide {
+  flex: 0 0 100%;
+  scroll-snap-align: center;
+  border: none;
+  padding: 0;
+  background: none;
+  cursor: zoom-in;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.image {
+  display: block;
+  width: 100%;
+  /* 4:3 — 법원 사진 대부분이 이 비율이라 잘림이 가장 적다 */
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background-color: var(--color-surface-soft);
+}
+
+.arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-full);
+  background-color: var(--color-canvas);
+  box-shadow: var(--shadow-sm);
+  color: var(--color-ink-deep);
+  font-size: var(--typography-body-md-font-size);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.arrowPrev {
+  left: var(--spacing-xs);
+}
+
+.arrowNext {
+  right: var(--spacing-xs);
+}
+
+.hint {
+  font-size: var(--typography-caption-font-size);
+  color: var(--color-steel);
+  margin: var(--spacing-xs) 0 0;
+}
+
+.empty {
+  font-size: var(--typography-body-sm-font-size);
+  color: var(--color-steel);
+  margin-top: var(--spacing-md);
+}
+
+/* 화면 중앙에 크게 — 패널 폭에 갇히지 않는다 */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background-color: rgb(0 0 0 / 78%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl);
+}
+
+.stage {
+  max-width: min(92vw, 1200px);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.stageImage {
+  max-width: 100%;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: var(--radius-lg);
+}
+
+.stageCaption {
+  font-size: var(--typography-body-sm-font-size);
+  color: var(--color-canvas);
+  margin: 0;
+  text-align: center;
+}
+
+.close {
+  position: absolute;
+  top: var(--spacing-lg);
+  right: var(--spacing-lg);
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: var(--radius-full);
+  background-color: rgb(255 255 255 / 14%);
+  color: var(--color-canvas);
+  font-size: var(--typography-body-md-font-size);
+  cursor: pointer;
+}
+
+.stageArrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 48px;
+  height: 48px;
+  border: none;
+  border-radius: var(--radius-full);
+  background-color: rgb(255 255 255 / 14%);
+  color: var(--color-canvas);
+  font-size: var(--typography-heading-sm-font-size);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.stageArrowPrev {
+  left: var(--spacing-lg);
+}
+
+.stageArrowNext {
+  right: var(--spacing-lg);
+}

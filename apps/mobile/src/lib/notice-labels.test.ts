@@ -54,9 +54,10 @@ describe('shortUsageName', () => {
 });
 
 describe('tenantLabel', () => {
-  it('0명과 미확인을 구분한다', () => {
+  it('없음·있음·미확인을 구분하고 사람 수를 세지 않는다', () => {
     expect(tenantLabel(0)).toBe('점유자 없음');
-    expect(tenantLabel(2)).toBe('점유자 2명');
+    expect(tenantLabel(1)).toBe('점유자 있음');
+    expect(tenantLabel(2)).toBe('점유자 있음');
     expect(tenantLabel(null)).toBeNull();
   });
 });
