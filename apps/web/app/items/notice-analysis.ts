@@ -13,6 +13,8 @@ export interface AnalyzedTenant {
   tenantSeq: number;
   sourceKinds: string[];
   occupiedPart: string | null;
+  /** 점유의 권원 원문 (예: "주거 임차인") — 명도 확인의 사실 근거다 */
+  possessionBasis: string | null;
   moveInDate: string | null;
   fixedDate: string | null;
   depositAmount: number | null;
@@ -32,6 +34,11 @@ export interface NoticeAnalysis {
   distributionDemandDeadline: string | null;
   assumedRightsKind: string | null;
   riskFlags: string[];
+  /**
+   * 법원이 "조사된 임차내역 없음"으로 적었는지. null 이면 못 읽은 것이라 사실을 단정하지 않는다.
+   * **"소유자가 산다"는 뜻이 아니다** — 공실이거나 조사가 안 됐을 수도 있다.
+   */
+  noTenantRecorded: boolean | null;
   tenants: AnalyzedTenant[];
   source: 'NOTICE_ONLY';
 }

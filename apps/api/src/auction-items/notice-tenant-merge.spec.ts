@@ -5,6 +5,7 @@ function row(overrides: Partial<NoticeTenantRowInput> & Pick<NoticeTenantRowInpu
     isGuarantor: false,
     sourceKind: '권리신고',
     occupiedPart: '202호',
+    possessionBasis: null,
     moveInDate: null,
     fixedDate: null,
     depositAmount: null,
@@ -33,6 +34,7 @@ describe('mergeNoticeTenants', () => {
       {
         tenantSeq: 1,
         isGuarantor: false,
+      possessionBasis: null,
       sourceKinds: ['현황조사', '권리신고'],
         occupiedPart: '202호',
         moveInDate: '2020-07-29',

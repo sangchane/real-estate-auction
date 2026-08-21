@@ -217,3 +217,75 @@
 .sourceActions {
   margin: 0 0 var(--spacing-base);
 }
+
+/* 4항목 체크리스트 — 확인 순서가 곧 화면 순서다. 번호를 남겨 순서를 눈으로 잡게 한다. */
+.checklist {
+  list-style: none;
+  margin: 0 0 var(--spacing-lg);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.checkItem {
+  display: flex;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  background-color: var(--color-surface-soft);
+  border-radius: var(--radius-lg);
+}
+
+.checkNo {
+  flex: none;
+  width: var(--spacing-lg);
+  height: var(--spacing-lg);
+  border-radius: var(--radius-full);
+  background-color: var(--color-canvas);
+  color: var(--color-steel);
+  font-size: var(--typography-caption-font-size);
+  font-weight: var(--typography-body-sm-bold-font-weight);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.checkMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+}
+
+.checkHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-xs);
+}
+
+.checkTitle {
+  font-size: var(--typography-body-sm-bold-font-size);
+  font-weight: var(--typography-body-sm-bold-font-weight);
+  color: var(--color-ink-deep);
+}
+
+.checkSummary {
+  font-size: var(--typography-body-sm-font-size);
+  color: var(--color-ink);
+  margin: 0;
+}
+
+.checkFacts {
+  font-size: var(--typography-caption-font-size);
+  color: var(--color-steel);
+  margin: 0;
+}
+
+/* 한계 문구 — 사실보다 약하게 두되 읽히긴 해야 한다. 빈 값이 "문제 없음"으로 읽히면 안 된다. */
+.checkLimit {
+  font-size: var(--typography-caption-font-size);
+  color: var(--color-stone);
+  margin: 0;
+}

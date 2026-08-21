@@ -24,6 +24,8 @@
     "app/items/notice-labels.test.ts",
     "app/items/photo.ts",
     "app/items/photo.test.ts",
+    "app/items/rights-checklist.test.ts",
+    "app/items/rights-checklist.ts",
     "app/items/components/ItemFilters.test.ts",
     "app/items/components/item-filters.ts",
     "app/items/map/usage-category.ts",

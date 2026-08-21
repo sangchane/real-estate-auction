@@ -25,6 +25,7 @@ const AREA_KIND: Record<string, 'AGGREGATE' | 'LAND' | 'BUILDING'> = {
 export const PG_POOL = Symbol('PG_POOL');
 
 interface NoticeRow {
+  tenantRowsRejected: number | null;
   id: string;
   documentDate: Date | string | null;
   baselineRaw: string | null;
@@ -35,6 +36,7 @@ interface NoticeRow {
 }
 
 interface NoticeTenantRow {
+  possessionBasis: string | null;
   /** 보증기관이 신고한 행인지 — 성명 대신 이 불리언만 SELECT한다 */
   isGuarantor: boolean | null;
   tenantSeq: number;
@@ -316,6 +318,8 @@ export async function loadAssumedDeposits(
         isGuarantor: tenant.isGuarantor ?? false,
         sourceKind: tenant.sourceKind,
         occupiedPart: tenant.occupiedPart,
+        // 목록 카드는 점유 권원을 쓰지 않는다 — 타입만 맞춘다(SELECT 하지 않아 null)
+        possessionBasis: null,
         moveInDate: toIsoDate(tenant.moveInDate),
         fixedDate: toIsoDate(tenant.fixedDate),
         depositAmount: tenant.depositAmount === null ? null : Number(tenant.depositAmount),
@@ -508,6 +512,8 @@ export class AuctionItemsRepository {
               n.baseline_raw AS "baselineRaw",
               n.baseline_date AS "baselineDate",
               n.distribution_demand_deadline AS "distributionDemandDeadline",
+              -- 표가 비었을 때 "법원이 임차인 없다고 적었다"와 "우리가 못 읽었다"를 가른다 (§4-7)
+              n.tenant_rows_rejected AS "tenantRowsRejected",
               n.assumed_rights_kind AS "assumedRightsKind",
               n.risk_flags AS "riskFlags"
        FROM auction_item_notice n
@@ -529,6 +535,7 @@ export class AuctionItemsRepository {
               (tenant_name ~ '(주택도시보증공사|한국주택금융공사|서울보증)') AS "isGuarantor",
               source_kind AS "sourceKind",
               occupied_part AS "occupiedPart",
+              possession_basis AS "possessionBasis",
               move_in_date AS "moveInDate",
               fixed_date AS "fixedDate",
               deposit_amount AS "depositAmount",
@@ -550,6 +557,13 @@ export class AuctionItemsRepository {
       distributionDemandDeadline: deadline,
       assumedRightsKind: notice.assumedRightsKind,
       riskFlags: notice.riskFlags ?? [],
+      // 표가 비었어도 "못 읽어서 빈 것"이면 사실을 단정하지 않는다 (§4-7의 버린 행 수를 쓴다)
+      noTenantRecorded:
+        tenantResult.rows.length > 0
+          ? false
+          : (notice.tenantRowsRejected ?? 0) > 0
+            ? null
+            : true,
       // 정보출처별로 흩어진 행을 사람 단위로 합친 뒤 판정한다 — 한 행만 골라 보면
       // 다른 행에만 있는 보증금·배당요구를 버리게 된다.
       // 보증기관이 대위한 보증금은 한 채권이다 — 원 임차인과 보증기관을 두 사람으로 세면
@@ -561,6 +575,7 @@ export class AuctionItemsRepository {
           isGuarantor: row.isGuarantor ?? false,
           sourceKind: row.sourceKind,
           occupiedPart: row.occupiedPart,
+          possessionBasis: row.possessionBasis,
           moveInDate: toIsoDate(row.moveInDate),
           fixedDate: toIsoDate(row.fixedDate),
           depositAmount: row.depositAmount === null ? null : Number(row.depositAmount),

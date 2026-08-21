@@ -6,6 +6,7 @@ function tenant(overrides: Partial<AnalyzedTenantDto>): AnalyzedTenantDto {
     tenantSeq: 1,
     sourceKinds: ['권리신고'],
     occupiedPart: null,
+    possessionBasis: null,
     moveInDate: '2024-01-01',
     fixedDate: null,
     depositAmount: 50_000_000,

@@ -22,6 +22,8 @@ export interface NoticeTenantRowInput {
   isGuarantor: boolean;
   sourceKind: string | null;
   occupiedPart: string | null;
+  /** 점유의 권원 원문 — 명도 판단의 사실 근거라 요약하지 않고 그대로 나른다 */
+  possessionBasis: string | null;
   moveInDate: string | null;
   fixedDate: string | null;
   depositAmount: number | null;
@@ -58,6 +60,7 @@ export function mergeNoticeTenants(rows: readonly NoticeTenantRowInput[]): Merge
           sourceKinds: row.sourceKind === null ? [] : [row.sourceKind],
           isGuarantor: row.isGuarantor,
           occupiedPart: row.occupiedPart,
+          possessionBasis: row.possessionBasis,
           moveInDate: row.moveInDate,
           fixedDate: row.fixedDate,
           depositAmount: row.depositAmount,
@@ -91,6 +94,7 @@ export function mergeNoticeTenants(rows: readonly NoticeTenantRowInput[]): Merge
 
 const FIELDS = [
   'occupiedPart',
+  'possessionBasis',
   'moveInDate',
   'fixedDate',
   'depositAmount',

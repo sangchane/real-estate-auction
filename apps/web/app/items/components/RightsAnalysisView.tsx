@@ -30,6 +30,7 @@ import {
   riskFlagLabels,
   type BurdenStatus,
 } from '../notice-labels';
+import { rightsChecklist, type ChecklistItem, type ChecklistStatus } from '../rights-checklist';
 import { NoticePdfDialog } from './NoticePdfDialog';
 import styles from './RightsAnalysisView.module.css';
 
@@ -45,6 +46,50 @@ const BURDEN_TONE: Record<BurdenStatus, BadgeTone> = {
   NOT_ASSUMED: 'muted',
   NEEDS_REVIEW: 'critical',
 };
+
+/** 체크리스트 상태 → 배지 색. 확인 필요한 것만 눈에 띄게 하고 나머지는 조용히 둔다. */
+const CHECKLIST_TONE: Record<ChecklistStatus, BadgeTone> = {
+  CONFIRMED: 'muted',
+  ATTENTION: 'warning',
+  UNKNOWN: 'critical',
+};
+
+const CHECKLIST_STATUS_LABEL: Record<ChecklistStatus, string> = {
+  CONFIRMED: '확인됨',
+  ATTENTION: '확인 필요',
+  UNKNOWN: '알 수 없음',
+};
+
+function ChecklistSection({ items }: { items: ChecklistItem[] }) {
+  return (
+    <section className={styles.groupBlock}>
+      <h3 className={styles.groupTitle}>이것부터 확인해요</h3>
+      <ol className={styles.checklist}>
+        {items.map((item, index) => (
+          <li key={item.key} className={styles.checkItem}>
+            <span className={styles.checkNo} aria-hidden="true">
+              {index + 1}
+            </span>
+            <div className={styles.checkMain}>
+              <div className={styles.checkHead}>
+                <span className={styles.checkTitle}>{item.title}</span>
+                <Badge tone={CHECKLIST_TONE[item.status]}>
+                  {CHECKLIST_STATUS_LABEL[item.status]}
+                </Badge>
+              </div>
+              <p className={styles.checkSummary}>{item.summary}</p>
+              {item.facts.length > 0 ? (
+                <p className={styles.checkFacts}>{item.facts.join(' · ')}</p>
+              ) : null}
+              {/* 한계를 반드시 밝힌다 — 빈 값이 "문제 없음"으로 읽히면 안 된다 */}
+              {item.limit ? <p className={styles.checkLimit}>{item.limit}</p> : null}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
 
 /**
  * 위 인수 금액에 무엇이 들어가고 무엇이 빠지는지 — "근저당도 내가 계산해야 하나"에 화면에서
@@ -255,6 +300,9 @@ export function RightsAnalysisView({
           금액이 확정되지 않은 임차인이 있어 실제 인수액은 위 금액보다 클 수 있어요.
         </p>
       ) : null}
+
+      {/* 확인 순서대로 4항목을 먼저 보여준다 — 값만 나열하면 무엇이 중요한지 드러나지 않는다 */}
+      <ChecklistSection items={rightsChecklist(analysis)} />
 
       <BurdenScopeSection />
 

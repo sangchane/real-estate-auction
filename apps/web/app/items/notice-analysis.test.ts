@@ -6,6 +6,7 @@ function tenant(overrides: Partial<AnalyzedTenant> & Pick<AnalyzedTenant, 'tenan
   return {
     sourceKinds: ['권리신고'],
     occupiedPart: '202호',
+    possessionBasis: '주거 임차인',
     moveInDate: '2020-07-29',
     fixedDate: '2023-12-20',
     depositAmount: 50_000_000,
