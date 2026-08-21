@@ -454,7 +454,6 @@ function ItemDetail({
           ) : (
             <RightsAnalysisView
               analysis={analysis}
-              basis={{ minimumSalePrice: item.minimumSalePrice }}
               affordability={affordability}
               noticePdfUrl={noticePdfSrc(item)}
             />

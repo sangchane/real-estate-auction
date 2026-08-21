@@ -289,3 +289,118 @@
   color: var(--color-stone);
   margin: 0;
 }
+
+/* 근거 한 줄 — 예전엔 고지 3줄이 화면 첫머리를 차지해 답보다 먼저 읽혔다 */
+.evidence {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-xs);
+  flex-wrap: wrap;
+  margin: 0 0 var(--spacing-md);
+}
+
+.evidenceText {
+  font-size: var(--typography-caption-font-size);
+  color: var(--color-steel);
+}
+
+/* 결론 카드 본문 — 숫자 바로 아래 붙는다. 각주로 떨어뜨리면 숫자만 읽고 지나간다 */
+.summaryBody {
+  font-size: var(--typography-body-sm-font-size);
+  color: var(--color-ink);
+  line-height: 1.55;
+  margin: var(--spacing-xs) 0 0;
+  word-break: keep-all;
+}
+
+/* 질문 섹션 — 요약은 늘 보이고 근거는 접는다 */
+.qSection {
+  padding: var(--spacing-md) 0;
+  border-bottom: 1px solid var(--color-hairline-soft);
+}
+
+.qHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-xs);
+}
+
+.qTitle {
+  font-size: var(--typography-heading-sm-font-size);
+  font-weight: var(--typography-heading-sm-font-weight);
+  color: var(--color-ink-deep);
+  margin: 0;
+}
+
+.qSummary {
+  font-size: var(--typography-body-sm-font-size);
+  color: var(--color-ink);
+  line-height: 1.55;
+  margin: 0 0 var(--spacing-xxs);
+  word-break: keep-all;
+}
+
+.qToggle {
+  border: none;
+  background: none;
+  padding: var(--spacing-xxs) 0 0;
+  color: var(--color-primary-deep);
+  font-size: var(--typography-body-sm-bold-font-size);
+  font-weight: var(--typography-body-sm-bold-font-weight);
+  cursor: pointer;
+}
+
+.qDetail {
+  margin-top: var(--spacing-sm);
+}
+
+/* 확인 목록 — 흩어져 있던 한계를 한 곳에 모은다 */
+.gaps {
+  margin: var(--spacing-lg) 0 var(--spacing-md);
+  padding: var(--spacing-md);
+  background-color: var(--color-surface-soft);
+  border-radius: var(--radius-lg);
+}
+
+.gapsTitle {
+  font-size: var(--typography-body-sm-bold-font-size);
+  font-weight: var(--typography-body-sm-bold-font-weight);
+  color: var(--color-ink-deep);
+  margin: 0 0 var(--spacing-xs);
+}
+
+.gapsList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xxs);
+}
+
+.gapsItem {
+  font-size: var(--typography-caption-font-size);
+  color: var(--color-steel);
+  line-height: 1.5;
+  word-break: keep-all;
+}
+
+.gapsItemTitle {
+  font-weight: var(--typography-body-sm-bold-font-weight);
+  color: var(--color-ink);
+}
+
+/* 헤드라인이 문장일 때 — 금액용 display 폰트에 넣으면 좁은 폭에서 세 줄로 깨진다.
+   크기는 줄이되 여기가 화면에서 가장 크게 읽히는 자리라는 성격은 유지한다. */
+.summaryStatement {
+  /* heading-md(28px)는 weight 300이라 화면에서 가장 중요한 줄이 오히려 흐려진다 */
+  font-size: var(--typography-heading-sm-font-size);
+  font-weight: var(--typography-heading-sm-font-weight);
+  line-height: var(--typography-heading-sm-line-height);
+  color: var(--color-ink-deep);
+  margin: 0 0 var(--spacing-sm);
+  word-break: keep-all;
+}

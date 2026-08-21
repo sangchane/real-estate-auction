@@ -25,6 +25,8 @@
     "app/items/photo.ts",
     "app/items/photo.test.ts",
     "app/items/rights-checklist.test.ts",
+    "app/items/rights-narrative.test.ts",
+    "app/items/rights-narrative.ts",
     "app/items/rights-checklist.ts",
     "app/items/components/ItemFilters.test.ts",
     "app/items/components/item-filters.ts",

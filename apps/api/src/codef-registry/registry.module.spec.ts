@@ -47,6 +47,12 @@ describe('buildRegistryConfig', () => {
     });
   });
 
+  it('무엇이 빠졌는지 이름으로 알려준다 — "설정이 없어요"만으로는 못 고친다', () => {
+    const config = buildRegistryConfig({ ...BASE, ...CREDENTIALS, CODEF_PUBLIC_KEY: undefined } as unknown as NodeJS.ProcessEnv);
+
+    expect(config.missing).toEqual(['CODEF_PUBLIC_KEY']);
+  });
+
   it('기본값은 데모다 — 설정을 잊었다고 700원이 나가면 안 된다', () => {
     const config = buildRegistryConfig({ ...BASE, ...CREDENTIALS } as NodeJS.ProcessEnv);
 

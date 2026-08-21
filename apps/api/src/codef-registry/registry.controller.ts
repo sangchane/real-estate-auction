@@ -24,8 +24,11 @@ import {
   AmbiguousAddressCandidateError,
   UnsupportedTwoWayMethodError,
 } from './client/codef-two-way';
-import type { RegistryLookupConfig } from './registry.module';
-import { CODEF_REGISTRY_SERVICE, REGISTRY_CONFIG } from './registry.module';
+import {
+  CODEF_REGISTRY_SERVICE,
+  REGISTRY_CONFIG,
+  type RegistryLookupConfig,
+} from './registry.tokens';
 import type { CodefRegistryService } from './service/codef-registry.service';
 import { AuctionItemsRepository } from '../auction-items/auction-items.repository';
 import type { RegisteredRightDto } from '../rights-analysis/dto/registered-right.dto';
@@ -159,7 +162,7 @@ export class RegistryController {
   /** 열람 자체가 불가능한 상태인지 — 자격증명이 없으면 호출 자체를 하지 않는다. */
   private blockedReason(): string | null {
     if (!this.config.credentials) {
-      return '등기부 열람에 필요한 설정이 아직 없어요.';
+      return `등기부 열람 설정이 아직 없어요 (빠진 값: ${this.config.missing.join(', ')}).`;
     }
     return null;
   }

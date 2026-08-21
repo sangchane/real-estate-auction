@@ -4,7 +4,12 @@
 // 그래서 인수액이 확정되지 않는 임차인이 생긴다. 그 한계는 본문에서 밝힌다.
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { fetchAffordability, fetchAuctionItem, fetchNoticeAnalysis } from '../../api-client';
+import {
+  fetchAffordability,
+  fetchAuctionItem,
+  fetchNoticeAnalysis,
+  fetchRegistryState,
+} from '../../api-client';
 import { AffordabilityCustomBid } from '../../components/AffordabilityCustomBid';
 import { RightsAnalysisView } from '../../components/RightsAnalysisView';
 import { decodeItemId } from '../../item-id';
@@ -21,10 +26,12 @@ export default async function RightsAnalysisPage({ params }: { params: Promise<{
   const key = decodeItemId(id);
   if (!key) notFound();
 
-  const [item, analysis, affordability] = await Promise.all([
+  // 등기부는 GET으로만 읽는다 — 보관본이 있으면 보여주고 없으면 상태만 온다. 발급이 아니라 무료다.
+  const [item, analysis, affordability, registry] = await Promise.all([
     fetchAuctionItem(key),
     fetchNoticeAnalysis(key),
     fetchAffordability(key),
+    fetchRegistryState(key),
   ]);
   if (!item) notFound();
 
@@ -33,9 +40,10 @@ export default async function RightsAnalysisPage({ params }: { params: Promise<{
       <h1 className={styles.title}>권리분석 결과</h1>
       <RightsAnalysisView
         analysis={analysis}
-        basis={{ minimumSalePrice: item.minimumSalePrice }}
         affordability={affordability}
         noticePdfUrl={noticePdfSrc(key)}
+        itemKey={key}
+        registry={registry}
       />
       {/* 직접 입력은 상세에서만 — 시나리오 정의는 API 한 곳에 있다 */}
       {analysis !== null ? (

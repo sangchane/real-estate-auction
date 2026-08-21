@@ -15,26 +15,24 @@ import { CodefRegistryClient } from './client/codef-registry.client';
 import { mapRegistryResponseToRegisteredRights } from './mapper/registry-response.mapper';
 import { RegistryController } from './registry.controller';
 import {
+  CODEF_REGISTRY_SERVICE,
+  REGISTRY_CONFIG,
+  type RegistryLookupConfig,
+} from './registry.tokens';
+import {
   CodefRegistryService,
   type RegistryLookupResult,
 } from './service/codef-registry.service';
 
-export const REGISTRY_CONFIG = Symbol('REGISTRY_CONFIG');
-export const CODEF_REGISTRY_SERVICE = Symbol('CODEF_REGISTRY_SERVICE');
-
-export interface RegistryLookupCredentialSet {
-  phoneNo: string;
-  ePrepayNo: string;
-  ePrepayPass: string;
-  publicKey: string;
-}
-
-export interface RegistryLookupConfig {
-  /** 하나라도 빠지면 null — 열람을 시도조차 하지 않는다 */
-  credentials: RegistryLookupCredentialSet | null;
-  /** 데모(무료)를 보고 있는지. 운영으로 바꾸면 1건에 700원이 실제로 나간다 */
-  isDemo: boolean;
-}
+/** 어느 키가 비었는지 이름으로 알려주기 위한 목록 — "설정이 없어요"만으로는 못 고친다 */
+const MISSING_KEYS = [
+  'CODEF_CLIENT_ID',
+  'CODEF_CLIENT_SECRET',
+  'CODEF_PUBLIC_KEY',
+  'IROS_PHONE_NO',
+  'IROS_EPREPAY_NO',
+  'IROS_EPREPAY_PASS',
+] as const;
 
 export function buildRegistryConfig(source: NodeJS.ProcessEnv): RegistryLookupConfig {
   const env = loadEnv(source);
@@ -51,6 +49,7 @@ export function buildRegistryConfig(source: NodeJS.ProcessEnv): RegistryLookupCo
     IROS_EPREPAY_PASS !== undefined;
 
   return {
+    missing: MISSING_KEYS.filter((key) => env[key] === undefined),
     credentials: complete
       ? {
           phoneNo: IROS_PHONE_NO,
