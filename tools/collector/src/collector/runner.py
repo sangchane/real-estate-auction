@@ -901,6 +901,9 @@ class DailySummary:
     requests_total: int
     notice_unavailable: int
     stage_failures: int
+    # 건별 저장 실패. 단계는 성공했는데 개별 명세서가 안 들어간 경우다 — 2026-08-21~31에
+    # 20,518건이 이렇게 조용히 실패했다. 단계 실패(stage_failures)만 보면 안 보인다 (§4-33)
+    notice_store_failed: int = 0
 
 
 class _CountingClient:
@@ -1209,13 +1212,26 @@ def run_daily(
         requests_total=counting.requests,
         notice_unavailable=notice_unavailable,
         stage_failures=stage_failures,
+        notice_store_failed=notices_store_failed,
     )
     logger.info(
-        "daily_done run_id=%s courts=%s notice_unavailable=%s stage_failures=%s requests_total=%s",
+        "daily_done run_id=%s courts=%s notice_unavailable=%s stage_failures=%s "
+        "notice_store_failed=%s requests_total=%s",
         run_id,
         ",".join(court_office_codes),
         summary.notice_unavailable,
         summary.stage_failures,
+        summary.notice_store_failed,
         summary.requests_total,
     )
+    # 저장이 실패하면 tenant_scanned_at이 안 남아 **다음 회차가 같은 문서를 다시 연다.**
+    # 그래서 조용히 두면 회차 시간이 계속 늘고(8/25~31 실측 300~380분, 정상은 8~50분)
+    # 법원 서버에 같은 요청을 반복한다 (D-007). 한 건이라도 나면 경고로 올린다.
+    if summary.notice_store_failed:
+        logger.warning(
+            "daily_notice_store_failed run_id=%s count=%s "
+            "— 저장 못 한 명세서는 다음 회차에 재조회된다. 원인을 먼저 확인할 것",
+            run_id,
+            summary.notice_store_failed,
+        )
     return summary

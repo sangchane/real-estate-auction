@@ -17,6 +17,7 @@ from collector.repository import (
     InMemoryPhotoRepository,
     InMemorySaleResultRepository,
 )
+from collector.repository import UpsertResult
 from collector.runner import NOTICE_PROGRESS_EVERY, UNAVAILABLE_STREAK_LIMIT, run_daily
 
 
@@ -724,3 +725,31 @@ def test_daily_does_not_rescan_when_limit_is_zero():
     )
 
     assert reader.opened == []
+
+
+def test_daily_summary_surfaces_notice_store_failures():
+    """건별 저장 실패를 회차 요약에 올리고 경고를 남긴다 (§4-33).
+
+    2026-08-21~31에 명세서 20,518건이 조용히 저장 실패했다. `daily_notices` 로그에는
+    store_failed가 있었지만 회차 최종 한 줄(`daily_done`)에는 없어 열흘간 아무도 못 봤다.
+
+    저장이 실패하면 tenant_scanned_at이 안 남아 **다음 회차가 같은 문서를 다시 연다.**
+    회차 소요가 8~50분에서 300~380분으로 늘었고, 3시간 간격을 넘겨 하루 8회가 3~6회로
+    줄었다. 법원 서버에 같은 요청을 반복한 셈이라 D-007 위반이기도 하다.
+    """
+    court = "B000210"
+
+    class FailingStoreRepository(FakeDailyRepository):
+        def upsert_notices(self, notices):
+            # 단계는 성공하고 건별로만 실패하는 상황 — stage_failures로는 안 잡힌다
+            return UpsertResult(inserted=0, updated=0, skipped=0, failed=len(notices))
+
+    client = FakeDailyClient(
+        {court: [_search_response([_row(court, "2024타경1")], page_no=1, total="1")]}
+    )
+
+    summary = _run(client, FailingStoreRepository())
+
+    assert summary.notice_store_failed == 1
+    # 단계 자체는 성공했다 — 이것만 보면 정상으로 보인다
+    assert summary.stage_failures == 0
