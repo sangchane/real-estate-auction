@@ -573,10 +573,12 @@ export function MapView() {
   // 원천 데이터에 구역명과 사업 종류가 같은 문자열로 들어온 행이 있다(실측 2026-08: 종로 일대 323건 중
   // zone_name과 business_kind가 같은 값 129건). 같은 값을 두 줄로 반복하지 않는다 —
   // 둘 다 비어 있는 경우는 "이름도 종류도 확인되지 않았다"는 서로 다른 사실이라 줄을 남긴다.
+  // 표시 이름을 businessKind에서 끌어온 경우, 같은 값을 "사업 종류"로 한 번 더 쓰면 두 줄이
+  // 똑같아진다. 원본이 원래 같은 값인 경우도 마찬가지다.
   const repeatsZoneName =
     selectedZone !== null &&
     selectedZone.businessKind !== null &&
-    selectedZone.businessKind === selectedZone.zoneName;
+    (selectedZone.namePromoted || selectedZone.businessKind === selectedZone.zoneName);
 
   const badgeLabel =
     fetchState === 'loading'
@@ -638,7 +640,7 @@ export function MapView() {
           {selectedZone ? (
             <div className={styles.zoneCard}>
               <div className={styles.zoneCardHead}>
-                <p className={styles.zoneName}>{selectedZone.zoneName ?? '구역명 정보 없음'}</p>
+                <p className={styles.zoneName}>{selectedZone.displayName ?? '구역명 정보 없음'}</p>
                 <button
                   type="button"
                   className={styles.zoneClose}

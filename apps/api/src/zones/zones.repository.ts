@@ -4,6 +4,7 @@ import type { Pool, QueryResultRow } from 'pg';
 import { PG_POOL } from '../auction-items/auction-items.repository';
 import type { Bbox } from '../auction-items/dto/bbox.dto';
 import type { ZoneFeatureCollectionDto, ZoneFeatureDto, ZoneGeometryDto } from './dto/zone-feature.dto';
+import { resolveZoneName } from './zone-display-name';
 
 // 설계 04는 줌 구간별 사다리(z≤12 0.0005 / z13~14 0.0002 / z≥15 0.00005)를 뒀다. 여기서는 줌 대신
 // bbox 폭에서 유도하므로 사다리의 양 끝값만 상·하한으로 남긴다.
@@ -66,6 +67,13 @@ function toFeature(row: ZoneRow): ZoneFeatureDto {
     properties: {
       // BIGINT·count는 pg가 문자열로 준다. 그대로 내리면 화면에서 숫자 비교가 문자열 비교가 된다.
       zoneId: Number(row.zoneId),
+      // 원천이 이름과 사업 종류를 두 필드에 섞어 써서 표시할 이름을 여기서 고른다.
+      // 원본 컬럼(zoneName·businessKind)은 그대로 함께 내린다 — 승격이 틀렸을 때 화면이
+      // 근거를 보여줄 수 있어야 하고, 나중에 진짜 이름을 받으면 이 한 줄만 걷어내면 된다.
+      ...(() => {
+        const naming = resolveZoneName(row.zoneName, row.businessKind);
+        return { displayName: naming.displayName, namePromoted: naming.promoted };
+      })(),
       zoneName: row.zoneName,
       businessKind: row.businessKind,
       sigungu: row.sigungu,

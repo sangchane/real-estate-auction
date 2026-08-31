@@ -20,6 +20,10 @@ const MIN_RING_POSITIONS = 3;
 
 export interface ZoneProperties {
   zoneId: number;
+  /** 화면에 낼 이름. 원천이 이름과 종류를 섞어 써서 API가 골라준다 */
+  displayName: string | null;
+  /** 이름을 businessKind에서 끌어왔는지 — 출처를 밝히는 데 쓴다 */
+  namePromoted: boolean;
   zoneName: string | null;
   businessKind: string | null;
   sigungu: string | null;
@@ -92,11 +96,13 @@ export function zoneRings(geometry: unknown): [number, number][][] {
 
 function toProperties(value: unknown): ZoneProperties | null {
   if (!isRecord(value)) return null;
-  const { zoneId, zoneName, businessKind, sigungu, itemCount } = value;
+  const { zoneId, displayName, namePromoted, zoneName, businessKind, sigungu, itemCount } = value;
   // 식별자와 물건 수가 숫자가 아니면 화면이 만들 수 있는 문장이 없다.
   if (typeof zoneId !== 'number' || typeof itemCount !== 'number') return null;
   return {
     zoneId,
+    displayName: typeof displayName === 'string' ? displayName : null,
+    namePromoted: namePromoted === true,
     zoneName: typeof zoneName === 'string' ? zoneName : null,
     businessKind: typeof businessKind === 'string' ? businessKind : null,
     sigungu: typeof sigungu === 'string' ? sigungu : null,

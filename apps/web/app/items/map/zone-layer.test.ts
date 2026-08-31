@@ -135,3 +135,47 @@ test('정비구역 줌 임계값은 개별 마커 전환 줌보다 낮다', () =
   assert.ok(ZONE_MIN_ZOOM < 15);
   assert.ok(ZONE_MIN_ZOOM >= 13);
 });
+
+test('표시 이름과 승격 여부를 함께 읽는다', () => {
+  // API가 원천의 zoneName/businessKind를 보고 표시 이름을 골라 내려준다.
+  // 화면은 그 판단을 다시 하지 않고 받은 값을 쓴다 — 두 곳에서 규칙이 갈라지면 안 된다.
+  const parsed = parseZoneCollection({
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: {
+          zoneId: 9,
+          displayName: '남대문 도시정비형 재개발구역',
+          namePromoted: true,
+          zoneName: null,
+          businessKind: '남대문 도시정비형 재개발구역',
+          sigungu: '11140',
+          itemCount: 2,
+        },
+        geometry: { type: 'Polygon', coordinates: SQUARE },
+      },
+    ],
+  });
+
+  assert.equal(parsed.features[0]?.properties.displayName, '남대문 도시정비형 재개발구역');
+  assert.equal(parsed.features[0]?.properties.namePromoted, true);
+  // 원본도 그대로 남는다 — 승격이 틀렸을 때 근거를 볼 수 있어야 한다
+  assert.equal(parsed.features[0]?.properties.zoneName, null);
+});
+
+test('승격 정보가 없으면 이름 없음으로 읽는다 — 지어내지 않는다', () => {
+  const parsed = parseZoneCollection({
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: { zoneId: 7, zoneName: null, businessKind: '도시환경정비구역', sigungu: null, itemCount: 0 },
+        geometry: { type: 'Polygon', coordinates: SQUARE },
+      },
+    ],
+  });
+
+  assert.equal(parsed.features[0]?.properties.displayName, null);
+  assert.equal(parsed.features[0]?.properties.namePromoted, false);
+});

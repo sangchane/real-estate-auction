@@ -107,6 +107,9 @@ describe('ZonesRepository', () => {
         },
         properties: {
           zoneId: 12,
+          // zoneName이 있으므로 승격하지 않는다
+          displayName: '한남3구역',
+          namePromoted: false,
           zoneName: '한남3구역',
           businessKind: '재개발',
           sigungu: '11170',
@@ -124,5 +127,32 @@ describe('ZonesRepository', () => {
 
     expect(result.features[0]?.properties.zoneName).toBeNull();
     expect(result.features[0]?.properties.itemCount).toBe(0);
+  });
+});
+
+describe('ZonesRepository 구역명 승격', () => {
+  it('zoneName이 비면 businessKind의 구역명을 표시 이름으로 올린다', async () => {
+    // 원천 실측: ALIAS가 776건 중 563건 비어 있고 REMARK에 구역명이 들어 있는 경우가 있다
+    const pool = createMockPool([
+      zoneRow({ zoneName: null, businessKind: '남대문 도시정비형 재개발구역' }),
+    ]);
+    const repository = new ZonesRepository(pool as never);
+
+    const { properties } = (await repository.findZonesInBbox(BLOCK, 1000)).features[0]!;
+
+    expect(properties.displayName).toBe('남대문 도시정비형 재개발구역');
+    expect(properties.namePromoted).toBe(true);
+    // 원본은 그대로 함께 내린다 — 승격이 틀렸을 때 근거를 볼 수 있어야 한다
+    expect(properties.zoneName).toBeNull();
+  });
+
+  it('사업 유형 어휘뿐이면 올리지 않는다 — 여러 구역이 같은 이름이 되면 이름 구실을 못 한다', async () => {
+    const pool = createMockPool([zoneRow({ zoneName: null, businessKind: '도시환경정비구역' })]);
+    const repository = new ZonesRepository(pool as never);
+
+    const { properties } = (await repository.findZonesInBbox(BLOCK, 1000)).features[0]!;
+
+    expect(properties.displayName).toBeNull();
+    expect(properties.businessKind).toBe('도시환경정비구역');
   });
 });

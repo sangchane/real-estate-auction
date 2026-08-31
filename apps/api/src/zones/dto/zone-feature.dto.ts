@@ -12,6 +12,15 @@ export interface ZoneGeometryDto {
 
 export interface ZoneFeaturePropertiesDto {
   zoneId: number;
+  /**
+   * 화면에 이름으로 낼 값. null이면 원천에 이름이 없다는 사실이다.
+   * 원천이 이름과 사업 종류를 두 필드에 섞어 써서, zoneName이 비면 businessKind에서
+   * 조건부로 끌어온다 (zone-display-name.ts).
+   */
+  displayName: string | null;
+  /** 이름을 businessKind에서 끌어왔는지 — 화면이 출처를 밝힐 수 있게 함께 내린다 */
+  namePromoted: boolean;
+  /** 원본 그대로. 승격 규칙이 틀렸을 때 근거를 볼 수 있어야 한다 */
   zoneName: string | null;
   businessKind: string | null;
   sigungu: string | null;
