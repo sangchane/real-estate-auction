@@ -1,6 +1,7 @@
 // 개발구역 조회 컨트롤러 — 지도 뷰포트가 구역 폴리곤 레이어를 받아가는 읽기 전용 엔드포인트
-import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
+import { BadRequestException, Controller, Get, NotFoundException, Param, Query } from '@nestjs/common';
 import type { Bbox } from '../auction-items/dto/bbox.dto';
+import type { DongBuildingAgeDto } from './dto/building-age.dto';
 import type { ZoneFeatureCollectionDto } from './dto/zone-feature.dto';
 import { ZonesRepository } from './zones.repository';
 
@@ -58,5 +59,22 @@ export class ZonesController {
   @Get()
   async zones(@Query('bbox') bbox?: string): Promise<ZoneFeatureCollectionDto> {
     return this.repository.findZonesInBbox(parseBbox(bbox), ZONE_FEATURE_LIMIT);
+  }
+
+  /**
+   * 물건이 속한 법정동의 노후도 사실. 404는 "물건이 없다"가 아니라 "이 물건에 대해 말할 수 있는
+   * 동 집계가 없다"까지 포함한다 — 화면은 섹션을 그리지 않는 것으로 응답한다 (조용한 0% 금지).
+   */
+  @Get('building-age/:courtOfficeCode/:caseNo/:itemNo')
+  async buildingAge(
+    @Param('courtOfficeCode') courtOfficeCode: string,
+    @Param('caseNo') caseNo: string,
+    @Param('itemNo') itemNo: string,
+  ): Promise<DongBuildingAgeDto> {
+    const dto = await this.repository.findBuildingAgeForItem(courtOfficeCode, caseNo, itemNo);
+    if (dto === null) {
+      throw new NotFoundException('이 물건이 속한 동의 노후도 집계가 아직 없어요');
+    }
+    return dto;
   }
 }

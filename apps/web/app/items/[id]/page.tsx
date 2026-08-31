@@ -3,7 +3,8 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { fetchAuctionItem, fetchAuctionItemPhotos } from '../api-client';
+import { fetchAuctionItem, fetchAuctionItemPhotos, fetchDongBuildingAge } from '../api-client';
+import { buildingAgeSummary, buildingAgeUnknownNote } from '../building-age';
 import { Badge } from '../components/Badge';
 import { FavoriteButton } from '../components/FavoriteButton';
 import {
@@ -60,6 +61,8 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
 
   // 사진은 사건 단위라 물건 → 사건 조인으로 조회된다 (008_item_photos.sql)
   const photos = await fetchAuctionItemPhotos(key);
+  // 물건이 속한 동의 노후도 사실. null이면 섹션을 그리지 않는다 — 없는 집계를 0%로 그리지 않는다
+  const buildingAge = await fetchDongBuildingAge(key);
 
   const minimumBidRate = computeMinimumBidRate(item.appraisalAmount, item.minimumSalePrice);
   const bidDatetimeLabel = formatBidDatetime(item.bidDatetime);
@@ -162,6 +165,18 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
           </div>
         </div>
       </section>
+
+      {/* 동네 노후도 — 건축물대장 집계 사실(FR-009). 좋고 나쁨은 말하지 않는다(D-011):
+          재개발 기대에는 노후가 유리하게, 실거주에는 불리하게 읽히는 값이라 판단은 보는 사람의 몫이다. */}
+      {buildingAge ? (
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>동네 건물 노후도</h2>
+          <p className={styles.buildingAgeSummary}>{buildingAgeSummary(buildingAge)}</p>
+          {buildingAgeUnknownNote(buildingAge) ? (
+            <p className={styles.buildingAgeNote}>{buildingAgeUnknownNote(buildingAge)}</p>
+          ) : null}
+        </section>
+      ) : null}
 
       {/* 매각물건명세서 — 법원이 공고한 사실이라 물건별 실데이터다(등기부 기반 권리분석은 아직 예시).
           가격·유찰만 보고 놓치기 쉬운 인수 부담이 여기서 처음 드러나므로 CTA 바로 위에 둔다. */}

@@ -214,3 +214,18 @@
   line-height: 1.5;
   margin: 0;
 }
+
+/* 동네 건물 노후도 — 사실 문장 + 결측 병기 한 줄 */
+.buildingAgeSummary {
+  font-size: var(--typography-body-md-font-size);
+  color: var(--color-ink);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.buildingAgeNote {
+  font-size: var(--typography-body-sm-font-size);
+  color: var(--color-steel);
+  line-height: 1.5;
+  margin: 4px 0 0;
+}

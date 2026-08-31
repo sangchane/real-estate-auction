@@ -3,6 +3,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { Pool, QueryResultRow } from 'pg';
 import { PG_POOL } from '../auction-items/auction-items.repository';
 import type { Bbox } from '../auction-items/dto/bbox.dto';
+import type { DongBuildingAgeDto } from './dto/building-age.dto';
 import type { ZoneFeatureCollectionDto, ZoneFeatureDto, ZoneGeometryDto } from './dto/zone-feature.dto';
 import { resolveZoneName } from './zone-display-name';
 
@@ -82,9 +83,68 @@ function toFeature(row: ZoneRow): ZoneFeatureDto {
   };
 }
 
+/**
+ * 소수점 1자리 %(05 반올림 정책). 분모 0이면 null — 0%를 돌려주면 화면이
+ * "노후 건물 없음"이라는 허위 사실을 만든다 (엣지 C-2, 021 컬럼 주석).
+ */
+export function ratioPct(numerator: number, denominator: number): number | null {
+  if (denominator <= 0) return null;
+  return Math.round((numerator / denominator) * 1000) / 10;
+}
+
+interface BuildingAgeRow extends QueryResultRow {
+  bjdCode: string;
+  dongName: string | null;
+  baseYm: string;
+  totalCount: number;
+  unknownAprCount: number;
+  over20Count: number;
+  over30Count: number;
+}
+
+// 물건 → 법정동(auction_item_dong, 정확히 0..1) → 동별 집계. base_ym 내림차순 1건 —
+// 집계가 여러 달 쌓여도 화면은 항상 가장 최근 기준연월 하나를 말한다.
+const SELECT_BUILDING_AGE = `
+  SELECT
+    b.bjd_code AS "bjdCode",
+    b.dong_name AS "dongName",
+    b.base_ym AS "baseYm",
+    b.total_count AS "totalCount",
+    b.unknown_apr_count AS "unknownAprCount",
+    b.over20_count AS "over20Count",
+    b.over30_count AS "over30Count"
+  FROM auction_item ai
+  JOIN auction_case ac ON ac.id = ai.auction_case_id
+  JOIN auction_item_dong d ON d.auction_item_id = ai.id
+  JOIN building_age_dong b ON b.bjd_code = d.bjd_code
+  WHERE ac.court_office_code = $1 AND ac.case_no = $2 AND ai.item_no = $3
+  ORDER BY b.base_ym DESC
+  LIMIT 1
+`;
+
 @Injectable()
 export class ZonesRepository {
   constructor(@Inject(PG_POOL) private readonly pool: Pool) {}
+
+  /** 물건이 속한 동의 노후도 집계. 동 매칭이 없거나 집계 전이면 null — 화면은 섹션을 그리지 않는다 */
+  async findBuildingAgeForItem(
+    courtOfficeCode: string,
+    caseNo: string,
+    itemNo: string,
+  ): Promise<DongBuildingAgeDto | null> {
+    const result = await this.pool.query<BuildingAgeRow>(SELECT_BUILDING_AGE, [
+      courtOfficeCode,
+      caseNo,
+      itemNo,
+    ]);
+    const row = result.rows[0];
+    if (!row) return null;
+    return {
+      ...row,
+      over20RatioPct: ratioPct(row.over20Count, row.totalCount),
+      over30RatioPct: ratioPct(row.over30Count, row.totalCount),
+    };
+  }
 
   async findZonesInBbox(bbox: Bbox, limit: number): Promise<ZoneFeatureCollectionDto> {
     // limit+1을 읽어야 "딱 limit건"과 "잘렸다"를 구분할 수 있다.

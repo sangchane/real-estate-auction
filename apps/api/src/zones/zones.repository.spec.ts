@@ -1,4 +1,4 @@
-import { ZonesRepository, simplifyToleranceFor } from './zones.repository';
+import { ZonesRepository, ratioPct, simplifyToleranceFor } from './zones.repository';
 
 const SEOUL_WIDE = { minLng: 126.76, minLat: 37.42, maxLng: 127.19, maxLat: 37.7 };
 const BLOCK = { minLng: 126.977, minLat: 37.565, maxLng: 126.985, maxLat: 37.571 };
@@ -138,7 +138,10 @@ describe('ZonesRepository 구역명 승격', () => {
     ]);
     const repository = new ZonesRepository(pool as never);
 
-    const { properties } = (await repository.findZonesInBbox(BLOCK, 1000)).features[0]!;
+    const feature = (await repository.findZonesInBbox(BLOCK, 1000)).features[0];
+    // 피처가 없으면 아래 단언이 통째로 건너뛰어져 초록불이 거짓말을 한다
+    expect(feature).toBeDefined();
+    const { properties } = feature as NonNullable<typeof feature>;
 
     expect(properties.displayName).toBe('남대문 도시정비형 재개발구역');
     expect(properties.namePromoted).toBe(true);
@@ -150,9 +153,69 @@ describe('ZonesRepository 구역명 승격', () => {
     const pool = createMockPool([zoneRow({ zoneName: null, businessKind: '도시환경정비구역' })]);
     const repository = new ZonesRepository(pool as never);
 
-    const { properties } = (await repository.findZonesInBbox(BLOCK, 1000)).features[0]!;
+    const feature = (await repository.findZonesInBbox(BLOCK, 1000)).features[0];
+    // 피처가 없으면 아래 단언이 통째로 건너뛰어져 초록불이 거짓말을 한다
+    expect(feature).toBeDefined();
+    const { properties } = feature as NonNullable<typeof feature>;
 
     expect(properties.displayName).toBeNull();
     expect(properties.businessKind).toBe('도시환경정비구역');
+  });
+});
+
+describe('ratioPct', () => {
+  it('소수점 1자리 %로 반올림한다 — 계산은 API 한 곳 (05 반올림 정책)', () => {
+    expect(ratioPct(496, 1240)).toBe(40);
+    expect(ratioPct(812, 1240)).toBe(65.5);
+    expect(ratioPct(177, 314)).toBe(56.4);
+  });
+
+  it('분모 0이면 null — 0%로 내리면 "노후 건물 없음"이라는 허위 사실이 된다 (엣지 C-2)', () => {
+    expect(ratioPct(0, 0)).toBeNull();
+  });
+});
+
+describe('ZonesRepository 노후도', () => {
+  const ageRow = {
+    bjdCode: '11110101',
+    dongName: '청운동',
+    baseYm: '2026-08',
+    totalCount: 314,
+    unknownAprCount: 43,
+    over20Count: 237,
+    over30Count: 177,
+  };
+
+  it('물건키 → 동 집계 한 행에 비율을 붙여 내린다', async () => {
+    const pool = createMockPool([ageRow]);
+    const repository = new ZonesRepository(pool as never);
+
+    const dto = await repository.findBuildingAgeForItem('B000210', '2024타경1234', '1');
+
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('building_age_dong'), [
+      'B000210',
+      '2024타경1234',
+      '1',
+    ]);
+    expect(dto).toEqual({ ...ageRow, over20RatioPct: 75.5, over30RatioPct: 56.4 });
+  });
+
+  it('동 매칭이나 집계가 없으면 null — 섹션을 그리지 않는 것이 정답이지 0%가 아니다', async () => {
+    const pool = createMockPool([]);
+    const repository = new ZonesRepository(pool as never);
+
+    expect(await repository.findBuildingAgeForItem('B000210', '2024타경1234', '1')).toBeNull();
+  });
+
+  it('분모 0인 동은 비율이 null인 채로 내려간다 — 화면이 "집계할 건물이 없어요"로 말한다', async () => {
+    const pool = createMockPool([
+      { ...ageRow, totalCount: 0, over20Count: 0, over30Count: 0, unknownAprCount: 12 },
+    ]);
+    const repository = new ZonesRepository(pool as never);
+
+    const dto = await repository.findBuildingAgeForItem('B000210', '2024타경1234', '1');
+
+    expect(dto?.over20RatioPct).toBeNull();
+    expect(dto?.over30RatioPct).toBeNull();
   });
 });

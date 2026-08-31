@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ZonesController, ZONE_FEATURE_LIMIT } from './zones.controller';
 
 const emptyCollection = { type: 'FeatureCollection' as const, truncated: false, features: [] };
@@ -79,6 +79,45 @@ describe('ZonesController', () => {
     );
     await expect(controller.zones('126.97,37.55,127.01,37.55')).rejects.toThrow(
       BadRequestException,
+    );
+  });
+});
+
+describe('ZonesController 노후도', () => {
+  const ageDto = {
+    bjdCode: '11110101',
+    dongName: '청운동',
+    baseYm: '2026-08',
+    totalCount: 314,
+    unknownAprCount: 43,
+    over20Count: 237,
+    over30Count: 177,
+    over20RatioPct: 75.5,
+    over30RatioPct: 56.4,
+  };
+
+  function createAgeController(dto: typeof ageDto | null) {
+    const repository = {
+      findZonesInBbox: jest.fn(),
+      findBuildingAgeForItem: jest.fn().mockResolvedValue(dto),
+    };
+    return { repository, controller: new ZonesController(repository as never) };
+  }
+
+  it('물건키를 그대로 리포지토리에 넘기고 집계를 돌려준다', async () => {
+    const { repository, controller } = createAgeController(ageDto);
+
+    const result = await controller.buildingAge('B000210', '2024타경1234', '1');
+
+    expect(repository.findBuildingAgeForItem).toHaveBeenCalledWith('B000210', '2024타경1234', '1');
+    expect(result).toBe(ageDto);
+  });
+
+  it('집계가 없으면 404 — 화면은 섹션을 그리지 않는 것으로 응답한다', async () => {
+    const { controller } = createAgeController(null);
+
+    await expect(controller.buildingAge('B000210', '2024타경1234', '1')).rejects.toThrow(
+      NotFoundException,
     );
   });
 });
