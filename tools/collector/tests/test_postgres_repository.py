@@ -555,3 +555,64 @@ def test_postgres_notice_scan_saves_when_pdf_is_missing():
     assert row[0] is not None
     # PDF를 못 받았으므로 받은 시각은 비어 있어야 한다
     assert row[1] is None
+
+
+@pytest.mark.skipif(
+    os.getenv("COLLECTOR_RUN_DB_TESTS") != "1",
+    reason="set COLLECTOR_RUN_DB_TESTS=1 to run PostGIS integration tests",
+)
+def test_postgres_rescan_skips_notices_whose_bid_date_has_passed():
+    """기일이 지난 명세서는 재수집 대상에서 뺀다.
+
+    명세서 열람 창은 기일 1주 전부터 기일까지다(WP-11 §4-3). 창이 닫힌 물건은 상세조회가
+    빈 객체로 와서 받아도 얻는 게 없는데, 회차당 상한을 그만큼 잡아먹어 **아직 창이 열려
+    있는 물건이 순서를 못 받는다.**
+
+    실측(2026-08-31): 재수집 대상 4,246건 중 3,301건(78%)이 기일이 지난 물건이었다.
+    그날 기일이 남은 건 731건뿐인데 상한 40으로는 손도 못 대는 상태였다.
+    """
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        pytest.skip("DATABASE_URL is required")
+
+    repository = PostgresAuctionRepository(database_url)
+    run_migrations(database_url)
+    _reset_or_skip(repository)
+    page = parse_search_page(json.loads(FIXTURE_PATH.read_text(encoding="utf-8")))
+    repository.upsert_items(page.items)
+
+    def _scanned(case_no: str, bid_date: date | None) -> ItemNotice:
+        return ItemNotice(
+            court_office_code="B000210",
+            case_no=case_no,
+            item_no="1",
+            document_date=date(2026, 7, 3),
+            bid_date=bid_date,
+            baseline_raw=None,
+            baseline_date=None,
+            distribution_demand_deadline=None,
+            assumed_rights_kind=None,
+            risk_flags=[],
+            lien_claim_amount=None,
+            tenants=(),
+            tenants_scanned=True,
+            tenant_source="TEXT_LAYER",  # PDF로 못 읽어서 재수집 후보다
+        )
+
+    past, upcoming = "2022타경101244", "2023타경4722"
+    repository.upsert_notices(
+        [_scanned(past, date(2020, 1, 1)), _scanned(upcoming, date(2099, 1, 1))]
+    )
+    # 20시간 조건을 통과시킨다 — 방금 넣은 행이라 그대로면 둘 다 안 나온다
+    with psycopg.connect(database_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE auction_item_notice SET tenant_scanned_at = now() - interval '2 days'"
+            )
+            conn.commit()
+
+    keys = repository.find_item_keys_needing_pdf_rescan()
+    case_numbers = {case_no for _, case_no, _, _ in keys}
+
+    assert upcoming in case_numbers
+    assert past not in case_numbers

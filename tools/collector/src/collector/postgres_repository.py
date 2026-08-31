@@ -172,6 +172,11 @@ class PostgresAuctionRepository:
         **마지막 스캔이 20시간을 넘은 것만** 낸다. 이 조건이 없으면 PDF가 계속 실패하는 문서가
         매 회차 재시도돼 재수집 예산을 영원히 잡아먹고, 다른 문서가 순서를 못 받는다.
         스케줄이 3시간마다이므로 20시간이면 문서 하나가 하루 한 번쯤 차례를 받는다.
+
+        **기일이 지난 것은 내지 않는다.** 열람 창은 기일까지라(§4-3) 창이 닫힌 물건은
+        상세조회가 빈 객체로 와서 받아도 얻는 게 없는데, 상한을 그만큼 잡아먹어 아직 창이
+        열려 있는 물건이 순서를 못 받는다. 실측(2026-08-31): 대상 4,246건 중 3,301건(78%)이
+        기일이 지난 물건이었고, 정작 창이 열린 731건은 상한 40에 손도 못 대고 있었다.
         """
         with psycopg.connect(self._database_url) as conn:
             with conn.cursor() as cur:
@@ -184,6 +189,7 @@ class PostgresAuctionRepository:
                     WHERE n.tenant_scanned_at IS NOT NULL
                       AND n.tenant_source IS DISTINCT FROM 'PDF_CELLS'
                       AND n.tenant_scanned_at < now() - interval '20 hours'
+                      AND n.bid_date >= CURRENT_DATE
                     """
                 )
                 return {(str(r[0]), str(r[1]), str(r[2]), r[3]) for r in cur.fetchall()}
