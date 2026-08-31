@@ -616,3 +616,67 @@ def test_postgres_rescan_skips_notices_whose_bid_date_has_passed():
 
     assert upcoming in case_numbers
     assert past not in case_numbers
+
+
+@pytest.mark.skipif(
+    os.getenv("COLLECTOR_RUN_DB_TESTS") != "1",
+    reason="set COLLECTOR_RUN_DB_TESTS=1 to run PostGIS integration tests",
+)
+def test_postgres_rescan_skips_notices_whose_bid_date_is_today():
+    """기일이 **오늘**인 명세서도 재수집 대상에서 뺀다.
+
+    실측(2026-08-31 12:49): 서울동부(B000211)의 재수집 대상 214건이 전부 그날 기일이었고
+    입찰은 10:00에 끝났다. 열람 창이 닫혀 상세조회가 20건 **연속** 빈 응답으로 왔고,
+    수집기의 스로틀 방어가 작동해 그 법원 수집을 중단했다(남은 93건 미처리).
+    즉 죽은 물건을 요청해 빈 응답을 자초하고, 그 대가로 살아 있는 물건까지 못 받았다.
+
+    당일 입찰 전(09시 회차)이라면 받을 수도 있지만, 스케줄이 3시간 간격이라 그 한 번을
+    노리는 이득보다 나머지 회차가 스로틀에 걸리는 손해가 크다.
+    """
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        pytest.skip("DATABASE_URL is required")
+
+    repository = PostgresAuctionRepository(database_url)
+    run_migrations(database_url)
+    _reset_or_skip(repository)
+    page = parse_search_page(json.loads(FIXTURE_PATH.read_text(encoding="utf-8")))
+    repository.upsert_items(page.items)
+
+    def _scanned(case_no: str, bid_date: date) -> ItemNotice:
+        return ItemNotice(
+            court_office_code="B000210",
+            case_no=case_no,
+            item_no="1",
+            document_date=date(2026, 7, 3),
+            bid_date=bid_date,
+            baseline_raw=None,
+            baseline_date=None,
+            distribution_demand_deadline=None,
+            assumed_rights_kind=None,
+            risk_flags=[],
+            lien_claim_amount=None,
+            tenants=(),
+            tenants_scanned=True,
+            tenant_source="TEXT_LAYER",
+        )
+
+    today_case, future_case = "2022타경101244", "2023타경4722"
+    with psycopg.connect(database_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT CURRENT_DATE")
+            today = cur.fetchone()[0]
+    repository.upsert_notices(
+        [_scanned(today_case, today), _scanned(future_case, date(2099, 1, 1))]
+    )
+    with psycopg.connect(database_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE auction_item_notice SET tenant_scanned_at = now() - interval '2 days'"
+            )
+            conn.commit()
+
+    case_numbers = {case_no for _, case_no, _, _ in repository.find_item_keys_needing_pdf_rescan()}
+
+    assert future_case in case_numbers
+    assert today_case not in case_numbers
