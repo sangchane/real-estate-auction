@@ -28,6 +28,16 @@ export const colors = {
   hairline: '#ced0d4',
   hairlineSoft: '#dee3e9',
   disabledText: '#bcc0c4',
+  // 지도 정비구역 폴리곤의 윤곽선. 팔레트에 색을 더하는 게 아니라 oculus-purple에 역할 이름만
+  // 붙인 별칭이다(design-adaptation §4 "컬러 팔레트 전체 계승, 치환 없음") — 값 일치는 colors.test.ts가 지킨다.
+  //
+  // 별칭을 따로 두는 이유는 지도 위에서 쓸 수 있는 색이 이미 다 팔렸기 때문이다. primary 계열은
+  // 전환 CTA 전용(design-adaptation §3)이고, success/warning/critical 계열은 구역을 좋고 나쁨으로
+  // 읽히게 해서 못 쓴다(D-011). 남는 무채색은 지적편집도가 그리는 회색 필지선과 섞여 구역 경계가
+  // 사라진다 — 두 레이어를 같이 켜는 것이 실제 사용 흐름이라 그게 가장 큰 제약이다.
+  // 다세대 마커 아이콘과 같은 색조지만, 흰 알약 안의 12px 아이콘과 바탕지도 위의 2px 선은 서로
+  // 자리를 다투지 않는다. 혼동이 실제로 관측되면 바꿀 곳은 이 한 줄이다.
+  mapZoneOutline: '#a121ce',
 } as const;
 
 export type ColorToken = keyof typeof colors;

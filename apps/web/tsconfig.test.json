@@ -38,6 +38,8 @@
     "app/items/map/bulk-lot.test.ts",
     "app/items/map/usage-category.ts",
     "app/items/map/usage-category.test.ts",
+    "app/items/map/zone-layer.ts",
+    "app/items/map/zone-layer.test.ts",
     "app/login/provider-href.ts",
     "app/login/provider-href.test.ts",
     "app/auth/session-cookie.ts",

@@ -59,9 +59,13 @@ interface NoticeTenantRow {
 export function toIsoDate(value: Date | string | null): string | null {
   if (value === null) return null;
   if (typeof value === 'string') return value.slice(0, 10);
+  // 연도도 네 자리로 채운다 — 법원 원문의 두 자리 연도가 서기 22년으로 적재된 행이 있고,
+  // 채우지 않으면 "22-07-20"이 나온다. 이 값을 받은 addOneDay가 Invalid Date로 터져 그 물건이
+  // 든 뷰포트의 bbox 응답 전체가 500이 된다(실측 2건, 지도 마커가 그 구역에서 통째로 사라졌다).
+  const year = String(value.getFullYear()).padStart(4, '0');
   const month = String(value.getMonth() + 1).padStart(2, '0');
   const day = String(value.getDate()).padStart(2, '0');
-  return `${value.getFullYear()}-${month}-${day}`;
+  return `${year}-${month}-${day}`;
 }
 
 const JOIN_RAW_AND_SCHEDULE = `

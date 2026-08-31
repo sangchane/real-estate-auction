@@ -1,4 +1,4 @@
-import { AuctionItemsRepository } from './auction-items.repository';
+import { AuctionItemsRepository, toIsoDate } from './auction-items.repository';
 
 function createMockPool(rows: unknown[]) {
   return { query: jest.fn().mockResolvedValue({ rows }) };
@@ -540,5 +540,26 @@ describe('AuctionItemsRepository 목록 필터 (지역·유형·가격)', () => 
       expect.stringContaining("hjguSido' = $1"),
       ['서울특별시', null, ['아파트'], null, null],
     );
+  });
+});
+
+/** Date.UTC(22, ...)는 22년이 아니라 1922년이다 — pg처럼 setUTCFullYear로 세 자리 이하 연도를 만든다. */
+function dateWithYear(year: number, month: number, day: number): Date {
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  return date;
+}
+
+describe('toIsoDate', () => {
+  it('연도가 네 자리가 아닌 날짜도 YYYY-MM-DD로 채운다', () => {
+    // 법원 원문의 두 자리 연도("22.07.20")가 서기 22년으로 적재된 행이 실제로 있다. 연도를 채우지
+    // 않으면 "22-07-20"이 되고, 이 문자열을 받은 addOneDay가 Invalid Date로 터져 그 물건이 든
+    // 뷰포트 전체가 500이 된다 — 한 행의 오염이 지도 한 구역의 마커를 통째로 지운다.
+    expect(toIsoDate(dateWithYear(22, 7, 20))).toBe('0022-07-20');
+    expect(toIsoDate(dateWithYear(217, 4, 24))).toBe('0217-04-24');
+  });
+
+  it('네 자리 연도는 그대로 둔다', () => {
+    expect(toIsoDate(dateWithYear(2022, 7, 20))).toBe('2022-07-20');
   });
 });

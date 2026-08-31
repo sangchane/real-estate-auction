@@ -181,3 +181,118 @@
   font-weight: var(--typography-body-sm-bold-font-weight);
   color: var(--color-on-primary);
 }
+
+/* 지도 위 레이어 조작 묶음 — 토글 버튼들과 그 결과 안내가 한 기둥으로 쌓인다.
+   토글이 둘 이상이 되면서 버튼마다 절대 좌표를 주면 서로 겹친다. 위치는 이 컨테이너가 한 번만 정하고,
+   버튼·안내는 흐름에 맡긴다. 물건 패널은 왼쪽, 배지는 가운데 위라서 오른쪽 위가 비어 있다. */
+.layerPanel {
+  position: absolute;
+  top: var(--spacing-base);
+  right: var(--spacing-base);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--spacing-xs);
+  /* 컨테이너 자체는 지도를 덮지 않는다 — 버튼·카드만 클릭을 받아야 지도 드래그가 막히지 않는다 */
+  pointer-events: none;
+}
+
+.layerToggles {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
+/* 레이어 토글 — 지적편집도·정비구역처럼 지도 위에서 켜고 끄는 버튼. */
+.layerToggle {
+  pointer-events: auto;
+  background-color: var(--color-canvas);
+  color: var(--color-ink-deep);
+  border: 1px solid var(--color-hairline-soft);
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-sm);
+  padding: var(--spacing-xs) var(--spacing-base);
+  font-size: var(--typography-body-sm-bold-font-size);
+  font-weight: var(--typography-body-sm-bold-font-weight);
+  cursor: pointer;
+}
+
+/* 켜진 상태는 반전이다 — buttonPillTabActive 와 같은 규칙 */
+.layerToggleOn {
+  background-color: var(--color-ink-deep);
+  color: var(--color-canvas);
+  border-color: var(--color-ink-deep);
+}
+
+/* 레이어를 켰는데 화면에 아무것도 안 나온 이유를 적는 줄. 이유를 안 적으면 "이 동네에 구역이 없다"로
+   읽힌다 — 서버가 truncated를 내려주는 이유와 같다(zone-feature.dto.ts). */
+.layerNote {
+  pointer-events: auto;
+  max-width: 220px;
+  margin: 0;
+  text-align: right;
+  background-color: var(--color-canvas);
+  border: 1px solid var(--color-hairline-soft);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--typography-caption-font-size);
+  color: var(--color-steel);
+}
+
+/* 구역을 누르면 열리는 카드. 물건 패널(왼쪽)과 겹치지 않게 토글 아래에 이어 붙인다. */
+.zoneCard {
+  pointer-events: auto;
+  width: 240px;
+  background-color: var(--color-canvas);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  padding: var(--spacing-sm) var(--spacing-base) var(--spacing-base);
+}
+
+.zoneCardHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.zoneName {
+  margin: 0;
+  font-size: var(--typography-body-sm-bold-font-size);
+  font-weight: var(--typography-body-sm-bold-font-weight);
+  color: var(--color-ink-deep);
+}
+
+.zoneClose {
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: var(--typography-body-md-font-size);
+  color: var(--color-steel);
+  line-height: 1;
+  padding: 2px 4px;
+}
+
+.zoneClose:hover {
+  color: var(--color-ink-deep);
+}
+
+/* 물건 개요 표(ItemDetailPanel .specs)와 같은 라벨-값 격자 — 같은 성격의 사실 나열이라 리듬을 맞춘다 */
+.zoneSpecs {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin-top: var(--spacing-xs);
+  font-size: var(--typography-caption-font-size);
+}
+
+.zoneSpecsLabel {
+  color: var(--color-steel);
+}
+
+.zoneSpecsValue {
+  color: var(--color-ink-deep);
+}

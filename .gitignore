@@ -28,3 +28,7 @@ __pycache__/
 .idea/
 .vscode/
 .DS_Store
+
+# 공간정보 원본 SHP zip (134MB). 원천에서 다시 받을 수 있고, 적재 결과는 DB에 있다.
+# 받는 곳은 autopilot/redevelopment-zone-overlay/11-user-actions.md 참고.
+docs/*.zip

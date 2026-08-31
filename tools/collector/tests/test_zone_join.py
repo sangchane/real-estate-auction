@@ -1,0 +1,198 @@
+"""물건→법정동 공간조인의 기준(포함=ST_Contains)과 멱등성을 고정하는 테스트 (TS-41).
+
+임시 테이블로 돌린다. PostgreSQL은 pg_temp를 먼저 찾으므로 같은 이름의 TEMP TABLE이
+실제 테이블을 가린다 — 수집 배치가 3시간마다 쓰는 실제 데이터를 건드리지 않고 SQL 자체를 검증한다.
+"""
+
+import os
+
+import psycopg
+import pytest
+
+from collector.zone_join import recompute_dong, recompute_zone
+
+
+# 사각형 동 하나. 안쪽 물건 1 · 경계선 위 물건 1 · geom NULL 물건 1 로 세 경우를 한 번에 본다.
+_FIXTURE_SQL = """
+CREATE TEMP TABLE bjd_dong (
+    bjd_code TEXT PRIMARY KEY,
+    dong_name TEXT,
+    sigungu TEXT,
+    geom geometry(MultiPolygon, 4326)
+) ON COMMIT DROP;
+
+CREATE TEMP TABLE auction_item (
+    id BIGINT PRIMARY KEY,
+    address TEXT,
+    geom geometry(Point, 4326)
+) ON COMMIT DROP;
+
+CREATE TEMP TABLE auction_item_dong (
+    auction_item_id BIGINT PRIMARY KEY,
+    bjd_code TEXT NOT NULL,
+    computed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+) ON COMMIT DROP;
+
+INSERT INTO bjd_dong VALUES
+    ('11111111', '테스트동', '11111',
+     ST_Multi(ST_GeomFromText('POLYGON((127 37,127 38,128 38,128 37,127 37))', 4326)));
+
+INSERT INTO auction_item VALUES
+    (1, '안쪽',      ST_SetSRID(ST_MakePoint(127.5, 37.5), 4326)),
+    (2, '경계선 위', ST_SetSRID(ST_MakePoint(127.0, 37.5), 4326)),
+    (3, '좌표 없음', NULL);
+"""
+
+
+def _connect_with_fixture():
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        pytest.skip("DATABASE_URL is required")
+    conn = psycopg.connect(database_url)
+    conn.execute(_FIXTURE_SQL)
+    return conn
+
+
+def test_contains_puts_only_the_inside_item_in_the_table():
+    """경계선 위 물건은 행을 만들지 않고 개수로만 남긴다.
+
+    물건×구역(ST_Intersects, 경계 포함)과 기준이 다르다. 동은 배타적 분할이라 포함 기준을 쓰면
+    한 물건이 두 동에 속하는 모순이 생긴다 (04-architecture FR-017).
+    """
+    conn = _connect_with_fixture()
+    try:
+        result = recompute_dong(conn)
+
+        rows = conn.execute(
+            "SELECT auction_item_id, bjd_code FROM auction_item_dong ORDER BY auction_item_id"
+        ).fetchall()
+        assert rows == [(1, "11111111")]
+        # geom NULL 물건은 분모에서 빠진다 — 조인 대상이 아니라 미배정이 아니다.
+        assert (result.total, result.joined, result.unmatched) == (2, 1, 1)
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+def test_rerun_does_not_change_rows():
+    # 같은 실행을 연달아 돌려도 행 수·값이 불변이어야 한다 (엣지 B-4).
+    conn = _connect_with_fixture()
+    try:
+        recompute_dong(conn)
+        first = conn.execute("SELECT auction_item_id, bjd_code FROM auction_item_dong").fetchall()
+
+        second_result = recompute_dong(conn)
+
+        second = conn.execute("SELECT auction_item_id, bjd_code FROM auction_item_dong").fetchall()
+        assert first == second
+        assert second_result.joined == 1
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+def test_item_moved_out_of_every_dong_loses_its_row():
+    """더 이상 어느 동에도 없는 물건의 옛 행을 남기면 화면이 옛 동의 노후도를 계속 말한다."""
+    conn = _connect_with_fixture()
+    try:
+        conn.execute(
+            "INSERT INTO auction_item_dong (auction_item_id, bjd_code) VALUES (2, '11111111')"
+        )
+
+        result = recompute_dong(conn)
+
+        remaining = conn.execute("SELECT auction_item_id FROM auction_item_dong").fetchall()
+        assert remaining == [(1,)]
+        assert result.removed == 1
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+# 구역 셋을 겹쳐 둔다: 물건 1은 두 구역에 동시에 들고(엣지 A-1), 물건 2는 경계선 위,
+# 구역 3은 폴리곤이 없는 대상지(후보)라 아무 물건에도 붙지 않아야 한다.
+_ZONE_FIXTURE_SQL = """
+CREATE TEMP TABLE redevelopment_zone (
+    id BIGINT PRIMARY KEY,
+    source TEXT,
+    source_zone_id TEXT,
+    zone_kind TEXT,
+    geom geometry(MultiPolygon, 4326)
+) ON COMMIT DROP;
+
+CREATE TEMP TABLE auction_item_zone (
+    auction_item_id BIGINT NOT NULL,
+    zone_id BIGINT NOT NULL,
+    computed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (auction_item_id, zone_id)
+) ON COMMIT DROP;
+
+INSERT INTO redevelopment_zone VALUES
+    (10, 'NSDI_UD602', 'A', 'REDEV',
+     ST_Multi(ST_GeomFromText('POLYGON((127 37,127 38,128 38,128 37,127 37))', 4326))),
+    (11, 'NSDI_UD602', 'B', 'REDEV',
+     ST_Multi(ST_GeomFromText('POLYGON((127.4 37.4,127.4 37.6,127.6 37.6,127.6 37.4,127.4 37.4))', 4326))),
+    (12, 'NSDI_UD602', 'C', 'REDEV', NULL);
+"""
+
+
+def _connect_with_zone_fixture():
+    conn = _connect_with_fixture()
+    conn.execute(_ZONE_FIXTURE_SQL)
+    return conn
+
+
+def test_intersects_puts_the_boundary_item_in_and_allows_overlap():
+    """물건×구역은 ST_Intersects다 — 경계선 위 물건도 포함하고, 한 물건이 여러 구역에 붙는다.
+
+    구역은 배타적 분할이 아니라 실제로 겹치므로 포함이 안전하다 (05 데이터 규칙, 엣지 A-1·A-3).
+    법정동 조인(ST_Contains)과 기준이 다른 점이 여기서 갈린다.
+    """
+    conn = _connect_with_zone_fixture()
+    try:
+        result = recompute_zone(conn)
+
+        rows = conn.execute(
+            "SELECT auction_item_id, zone_id FROM auction_item_zone ORDER BY auction_item_id, zone_id"
+        ).fetchall()
+        # 물건 1은 구역 10·11 둘 다, 경계선 위 물건 2는 구역 10에만, 폴리곤 없는 구역 12는 아무데도.
+        assert rows == [(1, 10), (1, 11), (2, 10)]
+        assert (result.items, result.zones, result.pairs) == (2, 2, 3)
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+def test_zone_rerun_does_not_change_rows():
+    # 같은 실행을 연달아 돌려도 행 수·값이 불변이어야 한다 (엣지 B-4).
+    conn = _connect_with_zone_fixture()
+    try:
+        recompute_zone(conn)
+        first = conn.execute("SELECT auction_item_id, zone_id FROM auction_item_zone").fetchall()
+
+        second_result = recompute_zone(conn)
+
+        second = conn.execute("SELECT auction_item_id, zone_id FROM auction_item_zone").fetchall()
+        assert sorted(first) == sorted(second)
+        assert second_result.pairs == 3
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+def test_pair_that_no_longer_overlaps_loses_its_row():
+    """구역 경계가 줄어 이제 겹치지 않는 짝을 남기면 화면이 옛 구역을 계속 사실로 말한다."""
+    conn = _connect_with_zone_fixture()
+    try:
+        conn.execute("INSERT INTO auction_item_zone (auction_item_id, zone_id) VALUES (3, 10)")
+
+        result = recompute_zone(conn)
+
+        remaining = conn.execute(
+            "SELECT auction_item_id, zone_id FROM auction_item_zone ORDER BY auction_item_id, zone_id"
+        ).fetchall()
+        assert remaining == [(1, 10), (1, 11), (2, 10)]
+        assert result.removed == 1
+    finally:
+        conn.rollback()
+        conn.close()

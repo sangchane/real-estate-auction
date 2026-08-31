@@ -9,7 +9,7 @@ NestJS 11 API 서버. 물건 조회·권리분석·즐겨찾기·인증·알림�
 
 ## 소유 경로
 
-`src/{auction-items,auth,backtest,codef-registry,config,favorites,health,notifications,rights-analysis}`
+`src/{auction-items,auth,backtest,codef-registry,config,favorites,health,notifications,rights-analysis,zones}`
 모듈마다 `controller / service / repository / dto`(+ 필요 시 `domain`)로 나눈다.
 읽기 전용 입력: `packages/shared`(공용 타입), `tools/collector`가 채우는 DB 스키마.
 

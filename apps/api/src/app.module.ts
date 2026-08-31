@@ -7,6 +7,7 @@ import { FavoritesModule } from './favorites/favorites.module';
 import { HealthController } from './health/health.controller';
 import { NotificationsModule } from './notifications/notifications.module';
 import { RegistryModule } from './codef-registry/registry.module';
+import { ZonesModule } from './zones/zones.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { RegistryModule } from './codef-registry/registry.module';
     FavoritesModule,
     NotificationsModule,
     RegistryModule,
+    ZonesModule,
   ],
   controllers: [HealthController],
 })

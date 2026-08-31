@@ -55,12 +55,36 @@ declare namespace naver.maps {
     fromCoordToOffset(coord: LatLng): Point;
   }
 
+  // 지적편집도(필지 경계·지번·지목) 오버레이. SDK가 타일로 그리므로 우리가 넘길 데이터가 없고,
+  // 지도에 붙였다 떼는 것이 API 표면의 전부다.
+  class CadastralLayer {
+    setMap(map: Map | null): void;
+  }
+
+  interface PolygonOptions {
+    map?: Map;
+    /** 링 목록. 첫 링이 바깥 경계이고 나머지는 구멍이다. */
+    paths: LatLng[][];
+    fillOpacity?: number;
+    strokeColor?: string;
+    strokeOpacity?: number;
+    strokeWeight?: number;
+    clickable?: boolean;
+  }
+
+  class Polygon {
+    constructor(options: PolygonOptions);
+    /** 인스턴스를 재사용해 다른 구역을 그릴 때 쓴다 — 새로 만들지 않고 좌표만 갈아 끼운다. */
+    setPaths(paths: LatLng[][]): void;
+    setMap(map: Map | null): void;
+  }
+
   // addListener가 반환하는 핸들 — 내부 구조는 몰라도 removeListener에 되돌려주면 해제된다
   type MapEventListener = object;
 
   namespace Event {
     function addListener(
-      target: Map | Marker,
+      target: Map | Marker | Polygon,
       eventName: string,
       listener: (...args: unknown[]) => void,
     ): MapEventListener;

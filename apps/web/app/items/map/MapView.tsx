@@ -1,9 +1,11 @@
 // 지도 탐색 화면의 클라이언트 로직 — 네이버 Web Dynamic Map 스크립트 로드, 카메라 idle마다 bbox 재조회,
 // 줌에 따라 클러스터 버블/개별 마커(가격 캡션) 전환, 마커 클릭 시 물건 상세로 이동한다 (모바일 F-01과 동일 문법).
+// 지적편집도·정비구역은 같은 idle 리듬에 얹은 선택 레이어다.
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Script from 'next/script';
+import { colors } from '@auction/design-tokens';
 import { formatDropRate, formatWonCompact } from '../format';
 import { isBulkLot } from './bulk-lot';
 import { clusterPoints, type ClusterInput } from './cluster';
@@ -15,6 +17,12 @@ import {
   USAGE_CATEGORY_LABEL,
   type UsageCategory,
 } from './usage-category';
+import {
+  parseZoneCollection,
+  ZONE_MIN_ZOOM,
+  type ZoneFeature,
+  type ZoneProperties,
+} from './zone-layer';
 import styles from './page.module.css';
 
 const NCP_MAPS_CLIENT_ID = process.env.NEXT_PUBLIC_NCP_MAPS_CLIENT_ID;
@@ -34,6 +42,34 @@ const IDLE_DEBOUNCE_MS = 300;
 const HOVER_CARD_WIDTH = 236;
 const HOVER_CARD_MAX_HEIGHT = 168;
 const HOVER_CARD_MARGIN = 8;
+
+// 정비구역은 **채움 없이 윤곽선만** 그린다 (기획 12). 면을 칠하면 지적편집도·마커와 색이 겹쳐 섞이고,
+// 겹친 구역끼리도 서로를 덮어 아무것도 읽히지 않는다.
+const ZONE_FILL_OPACITY = 0;
+// 1px은 바탕지도의 도로선과 구분되지 않고, 3px이면 작은 구역이 선에 먹힌다.
+const ZONE_STROKE_WEIGHT = 2;
+const ZONE_STROKE_OPACITY = 0.9;
+
+// 레이어를 켰는데 화면이 비어 있을 때 그 이유를 적는다. 이유가 없으면 "이 동네에 구역이 없다"로 읽힌다.
+type ZoneNotice = 'none' | 'zoomIn' | 'truncated' | 'error';
+
+const ZONE_NOTICE_TEXT: Record<Exclude<ZoneNotice, 'none'>, string> = {
+  zoomIn: '정비구역은 지도를 조금 더 확대하면 보여요.',
+  truncated: '이 범위에 정비구역이 많아 일부만 그렸어요.',
+  error: '정비구역을 불러오지 못했어요.',
+};
+
+/** 재사용하는 폴리곤 한 칸. 담긴 구역이 바뀌므로 클릭 시점에 feature를 읽어야 한다. */
+interface ZonePolygonSlot {
+  polygon: naver.maps.Polygon;
+  feature: ZoneFeature | null;
+  /**
+   * 지금 지도에 붙어 있는지. SDK의 setMap은 같은 지도를 다시 넘겨도 그냥 넘어가지 않고 매번
+   * 오버레이를 다시 단다 — 실측에서 이미 붙은 폴리곤 100개에 setMap(map)을 다시 부르는 데만
+   * 92ms가 들었다. 붙은 칸을 건너뛰려고 붙임 상태를 우리가 들고 있는다.
+   */
+  attached: boolean;
+}
 
 interface AuctionItemPin {
   courtOfficeCode: string;
@@ -142,6 +178,20 @@ function clusterHtml(count: number): string {
 export function MapView() {
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<naver.maps.Map | null>(null);
+  // 지적편집도(필지 경계·지번·지목). 지도 SDK가 타일로 그려주므로 우리가 적재할 데이터가 없다.
+  // 용도지역("몇 종 지역")은 이 레이어에 없다 — 그건 별도 원천(OA-21136)이 필요하다 (기획 12).
+  const cadastralRef = useRef<naver.maps.CadastralLayer | null>(null);
+  const [cadastralOn, setCadastralOn] = useState(false);
+  // 정비구역 폴리곤. 뷰포트를 옮길 때마다 인스턴스를 새로 만들면 수백 개가 생겼다 버려지므로
+  // 칸을 만들어 두고 좌표만 갈아 끼운다. 남는 칸은 지우지 않고 지도에서만 뗀다.
+  const zoneSlotsRef = useRef<ZonePolygonSlot[]>([]);
+  const [zonesOn, setZonesOn] = useState(false);
+  // idle 리스너는 지도를 만들 때 한 번만 걸리므로 그 클로저는 토글의 최신 값을 볼 수 없다 —
+  // 호버 좌표와 같은 이유로 state가 아니라 ref로도 들고 있는다.
+  const zonesOnRef = useRef(false);
+  const zoneRequestIdRef = useRef(0);
+  const [zoneNotice, setZoneNotice] = useState<ZoneNotice>('none');
+  const [selectedZone, setSelectedZone] = useState<ZoneProperties | null>(null);
   const idleListenerRef = useRef<naver.maps.MapEventListener | null>(null);
   const boundsListenerRef = useRef<naver.maps.MapEventListener | null>(null);
   const markersRef = useRef<naver.maps.Marker[]>([]);
@@ -212,6 +262,110 @@ export function MapView() {
     }
   }, []);
 
+  /** 폴리곤을 지도에서 뗀다. 인스턴스는 남겨 다음 조회에서 다시 쓴다. */
+  const hideZones = useCallback(() => {
+    for (const slot of zoneSlotsRef.current) {
+      if (!slot.attached) continue;
+      slot.polygon.setMap(null);
+      slot.attached = false;
+      slot.feature = null;
+    }
+  }, []);
+
+  const drawZones = useCallback((map: naver.maps.Map, features: ZoneFeature[]) => {
+    const naverMaps = window.naver?.maps;
+    if (!naverMaps) return;
+    const slots = zoneSlotsRef.current;
+
+    features.forEach((feature, index) => {
+      const paths = feature.rings.map((ring) =>
+        ring.map(([lng, lat]) => new naverMaps.LatLng(lat, lng)),
+      );
+      const slot = slots[index];
+      if (slot === undefined) {
+        const created: ZonePolygonSlot = {
+          polygon: new naverMaps.Polygon({
+            map,
+            paths,
+            fillOpacity: ZONE_FILL_OPACITY,
+            strokeColor: colors.mapZoneOutline,
+            strokeOpacity: ZONE_STROKE_OPACITY,
+            strokeWeight: ZONE_STROKE_WEIGHT,
+            clickable: true,
+          }),
+          feature,
+          attached: true,
+        };
+        // 리스너는 인스턴스마다 한 번만 건다. 칸이 재사용되며 담긴 구역이 바뀌므로 생성 시점의
+        // feature를 클로저에 가두면 클릭했을 때 옛 구역이 열린다 — 칸을 통해 지금 값을 읽는다.
+        naverMaps.Event.addListener(created.polygon, 'click', () => {
+          if (created.feature !== null) setSelectedZone(created.feature.properties);
+        });
+        slots.push(created);
+        return;
+      }
+      slot.feature = feature;
+      slot.polygon.setPaths(paths);
+      // 이미 붙어 있으면 다시 달지 않는다 — 패닝마다 전 폴리곤을 재부착하면 그만큼 화면이 멎는다.
+      if (!slot.attached) {
+        slot.polygon.setMap(map);
+        slot.attached = true;
+      }
+    });
+
+    for (let index = features.length; index < slots.length; index += 1) {
+      const spare = slots[index];
+      if (spare === undefined || !spare.attached) continue;
+      spare.polygon.setMap(null);
+      spare.attached = false;
+      spare.feature = null;
+    }
+  }, []);
+
+  /**
+   * 지금 뷰포트의 정비구역을 맞춘다 — 물건 조회(loadBbox)와 같은 idle 리듬을 탄다.
+   *
+   * 줌이 낮으면 조회조차 하지 않는다. 그 범위는 서울 전체가 한 화면에 들어와 구역이 수백 개인데,
+   * 화면에서는 점으로 뭉개져 그릴 값도 없다 (근거는 zone-layer.ts ZONE_MIN_ZOOM).
+   */
+  const syncZones = useCallback(
+    async (map: naver.maps.Map) => {
+      // 끄거나 줌을 벗어나는 경우에도 번호를 올린다 — 그래야 이미 날아간 응답이 뒤늦게 그리지 못한다.
+      const requestId = ++zoneRequestIdRef.current;
+      if (!zonesOnRef.current) {
+        hideZones();
+        setZoneNotice('none');
+        return;
+      }
+      if (map.getZoom() < ZONE_MIN_ZOOM) {
+        hideZones();
+        setZoneNotice('zoomIn');
+        return;
+      }
+      const bounds = map.getBounds();
+      const bbox = [
+        bounds.getSW().lng(),
+        bounds.getSW().lat(),
+        bounds.getNE().lng(),
+        bounds.getNE().lat(),
+      ].join(',');
+      try {
+        const response = await fetch(`/api/zones?bbox=${bbox}`);
+        if (!response.ok) throw new Error(`zones 조회 실패: ${response.status}`);
+        const collection = parseZoneCollection(await response.json());
+        if (zoneRequestIdRef.current !== requestId) return;
+        drawZones(map, collection.features);
+        setZoneNotice(collection.truncated ? 'truncated' : 'none');
+      } catch {
+        if (zoneRequestIdRef.current !== requestId) return;
+        // 실패하면 이전 범위의 폴리곤이 남지 않게 지운다 (loadBbox와 같은 규칙).
+        hideZones();
+        setZoneNotice('error');
+      }
+    },
+    [drawZones, hideZones],
+  );
+
   /**
    * 카메라가 움직이는 **동안** 카드를 마커에 붙여 둔다.
    *
@@ -238,9 +392,10 @@ export function MapView() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
         loadBbox(map.getBounds());
+        void syncZones(map);
       }, IDLE_DEBOUNCE_MS);
     },
-    [loadBbox],
+    [loadBbox, syncZones],
   );
 
   const handleScriptReady = useCallback(() => {
@@ -293,11 +448,38 @@ export function MapView() {
     hoveredCoordRef.current = null;
     markersRef.current.forEach((marker) => marker.setMap(null));
     markersRef.current = [];
+    // 파괴될 지도에 붙은 오버레이를 그대로 들고 있으면, 다음 지도에서 재사용될 때 옛 지도를 가리킨다.
+    cadastralRef.current?.setMap(null);
+    cadastralRef.current = null;
+    zoneSlotsRef.current.forEach((slot) => slot.polygon.setMap(null));
+    zoneSlotsRef.current = [];
     mapRef.current?.destroy();
     mapRef.current = null;
   }, []);
 
   useEffect(() => () => cleanupMap(), [cleanupMap]);
+
+  // 지적편집도는 SDK가 타일로 그려주므로 붙였다 떼기만 한다. 인스턴스는 한 번만 만든다 —
+  // 껐다 켤 때마다 새로 만들면 지도 안에 오버레이가 쌓인다.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map === null || !window.naver?.maps) return;
+    if (!cadastralOn) {
+      cadastralRef.current?.setMap(null);
+      return;
+    }
+    cadastralRef.current ??= new window.naver.maps.CadastralLayer();
+    cadastralRef.current.setMap(map);
+  }, [cadastralOn]);
+
+  // 토글은 idle을 기다리지 않고 그 자리에서 반영한다 — 눌렀는데 지도를 움직여야 나타나면 고장으로 보인다.
+  useEffect(() => {
+    zonesOnRef.current = zonesOn;
+    if (!zonesOn) setSelectedZone(null); // 레이어를 끄면 열려 있던 구역 카드도 함께 닫는다
+    const map = mapRef.current;
+    if (map === null) return;
+    void syncZones(map);
+  }, [zonesOn, syncZones]);
 
   // 물건 목록이 바뀔 때마다 기존 마커를 지우고 현재 줌에 맞춰 클러스터 버블 또는 개별 마커를 다시 그린다.
   useEffect(() => {
@@ -379,9 +561,22 @@ export function MapView() {
 
   const handleRetry = useCallback(() => {
     cleanupMap();
+    // 오버레이는 cleanupMap이 버렸으므로 토글도 꺼진 상태로 되돌린다 — 켜진 버튼과 빈 지도가 어긋난다.
+    setCadastralOn(false);
+    setZonesOn(false);
+    setZoneNotice('none');
+    setSelectedZone(null);
     setScriptState('loading');
     setScriptRetryKey((key) => key + 1);
   }, [cleanupMap]);
+
+  // 원천 데이터에 구역명과 사업 종류가 같은 문자열로 들어온 행이 있다(실측 2026-08: 종로 일대 323건 중
+  // zone_name과 business_kind가 같은 값 129건). 같은 값을 두 줄로 반복하지 않는다 —
+  // 둘 다 비어 있는 경우는 "이름도 종류도 확인되지 않았다"는 서로 다른 사실이라 줄을 남긴다.
+  const repeatsZoneName =
+    selectedZone !== null &&
+    selectedZone.businessKind !== null &&
+    selectedZone.businessKind === selectedZone.zoneName;
 
   const badgeLabel =
     fetchState === 'loading'
@@ -413,6 +608,59 @@ export function MapView() {
 
       {hovered ? (
         <ItemHoverCard items={hovered.items} left={hovered.left} top={hovered.top} />
+      ) : null}
+
+      {scriptState === 'ready' ? (
+        <div className={styles.layerPanel}>
+          <div className={styles.layerToggles}>
+            <button
+              type="button"
+              className={cadastralOn ? `${styles.layerToggle} ${styles.layerToggleOn}` : styles.layerToggle}
+              aria-pressed={cadastralOn}
+              onClick={() => setCadastralOn((on) => !on)}
+            >
+              지적편집도
+            </button>
+            <button
+              type="button"
+              className={zonesOn ? `${styles.layerToggle} ${styles.layerToggleOn}` : styles.layerToggle}
+              aria-pressed={zonesOn}
+              onClick={() => setZonesOn((on) => !on)}
+            >
+              정비구역
+            </button>
+          </div>
+
+          {zonesOn && zoneNotice !== 'none' ? (
+            <p className={styles.layerNote}>{ZONE_NOTICE_TEXT[zoneNotice]}</p>
+          ) : null}
+
+          {selectedZone ? (
+            <div className={styles.zoneCard}>
+              <div className={styles.zoneCardHead}>
+                <p className={styles.zoneName}>{selectedZone.zoneName ?? '구역명 정보 없음'}</p>
+                <button
+                  type="button"
+                  className={styles.zoneClose}
+                  onClick={() => setSelectedZone(null)}
+                  aria-label="구역 정보 닫기"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className={styles.zoneSpecs}>
+                {repeatsZoneName ? null : (
+                  <>
+                    <span className={styles.zoneSpecsLabel}>사업 종류</span>
+                    <span className={styles.zoneSpecsValue}>{selectedZone.businessKind ?? '정보 없음'}</span>
+                  </>
+                )}
+                <span className={styles.zoneSpecsLabel}>겹치는 물건</span>
+                <span className={styles.zoneSpecsValue}>{selectedZone.itemCount}건</span>
+              </div>
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
       {scriptState === 'ready' ? (

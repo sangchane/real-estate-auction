@@ -7,7 +7,14 @@ requires-python = ">=3.12"
 # opendataloader-pdf 는 매각물건명세서 PDF의 표 구조(괘선)를 읽는다 — 텍스트 레이어에는
 # 괘선이 없어 임차인 행·사람을 못 가른다 (WP-11 §4-30). JAR 이라 Java 11+ 가 필요하고,
 # 실행할 java 는 COLLECTOR_JAVA 로 지정한다.
-dependencies = ["psycopg[binary]>=3.2", "pyproj>=3.6", "opendataloader-pdf>=2.0"]
+# pyshp 는 법정동·정비구역 경계 SHP 를 읽는다 — 순수 파이썬이라 Windows 배치 환경에서
+# GDAL 바이너리 의존을 피한다 (autopilot/redevelopment-zone-overlay/04-architecture.md).
+dependencies = [
+    "psycopg[binary]>=3.2",
+    "pyproj>=3.6",
+    "opendataloader-pdf>=2.0",
+    "pyshp>=3.1",
+]
 
 [dependency-groups]
 dev = ["pytest>=8.0", "ruff>=0.6"]
