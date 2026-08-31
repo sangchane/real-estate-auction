@@ -88,5 +88,10 @@ goto wait_net
 :net_ready
 
 cd /d "%HERE%"
-".venv\Scripts\python.exe" -m collector daily --with-tenants >> "%HERE%daily.log" 2>&1
+REM Caps keep one run inside the 3-hour schedule slot. Measured 2026-08-31: ~17s per
+REM notice (4 requests each). 250 new + 40 rescans per court (5 courts = 200) is ~450
+REM notices, ~128 minutes, ~1800 requests. Without caps a run took 300-380 minutes and
+REM the next slot was skipped entirely - 8 runs a day dropped to 3-6 (WP-11 section 4-33).
+REM --notice-limit is a total; --rescan-limit is per court.
+".venv\Scripts\python.exe" -m collector daily --with-tenants --notice-limit 250 --rescan-limit 40 >> "%HERE%daily.log" 2>&1
 exit /b %ERRORLEVEL%
