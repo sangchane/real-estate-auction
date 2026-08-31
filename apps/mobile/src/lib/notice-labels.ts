@@ -62,17 +62,20 @@ export function tenantLabel(tenantCount: number | null): string | null {
 export const NOTICE_ASSUMPTION_LABEL: Record<string, string> = {
   NOT_ASSUMED: '인수 안 함',
   ASSUMED_FULL: '보증금 전액 인수',
-  ASSUMED_AMOUNT_UNKNOWN: '인수 금액 확인 필요',
+  ASSUMED_AMOUNT_UNKNOWN: '금액 미확정',
   UNKNOWN: '판정 불가',
 };
 
 /** 그 판정이 왜 그렇게 나왔는지 — 사실만 적는다. */
 export const NOTICE_ASSUMPTION_REASON: Record<string, string> = {
-  NOT_ASSUMED: '대항력이 말소기준보다 늦어요',
-  ASSUMED_FULL: '대항력이 있는데 배당요구가 없거나 종기를 넘겼어요',
+  // 웹 notice-labels.ts와 같은 문구다 — 같은 물건이 두 화면에서 다르게 읽히면 안 된다.
+  // 용어(대항력·말소기준·배당요구)를 결과로 바꿔 쓴다.
+  NOT_ASSUMED: '기준 날짜보다 늦게 전입해서, 보증금을 매수인이 떠안지 않아요',
+  ASSUMED_FULL:
+    '기준 날짜보다 먼저 전입했는데 배당요구를 하지 않았어요(또는 마감일을 넘겼어요). 그래서 보증금 전액이 매수인에게 넘어와요',
   ASSUMED_AMOUNT_UNKNOWN:
-    '대항력과 배당요구가 모두 있어요. 배당으로 얼마를 회수할지는 등기부가 있어야 알 수 있어요',
-  UNKNOWN: '전입일이나 최선순위 설정일이 명세서에 없어요',
+    '먼저 전입했고 배당요구도 했어요. 배당에서 못 돌려받는 만큼을 매수인이 내주는데, 그 금액은 등기부의 빚 목록이 있어야 계산돼요',
+  UNKNOWN: '전입일이나 기준 날짜가 명세서에 없어 판정할 수 없어요',
 };
 
 /**
@@ -136,7 +139,7 @@ export function assumedDepositCardLabel(
   if (deposit == null) return null;
   const headline = assumedHeadline(deposit);
   if (headline.kind === 'NONE') return '보증금 인수 없음';
-  if (headline.kind === 'UNCONFIRMED') return '인수 금액 확인 필요';
+  if (headline.kind === 'UNCONFIRMED') return '금액 미확정';
   return `보증금 인수 ${formatAmount(headline.amount)}${
     headline.isLowerBound ? ' 이상' : ''
   }`;

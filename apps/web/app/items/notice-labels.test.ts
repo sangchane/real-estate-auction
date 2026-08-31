@@ -18,6 +18,7 @@ import {
   shortUsageName,
   tenantLabel,
 } from './notice-labels';
+import { GLOSSARY } from './glossary';
 
 test('assumedRightsLabel은 명세서 코드를 한국어 라벨로 바꾼다', () => {
   assert.equal(assumedRightsLabel('LEASEHOLD_REGISTRATION'), '주택임차권등기');
@@ -103,7 +104,7 @@ test('위험 플래그 라벨이 모바일 사본과 같다', () => {
 test('noticeAssumptionLabel은 인수 판정을 화면 문구로 바꾼다', () => {
   assert.equal(noticeAssumptionLabel('NOT_ASSUMED'), '인수 안 함');
   assert.equal(noticeAssumptionLabel('ASSUMED_FULL'), '보증금 전액 인수');
-  assert.equal(noticeAssumptionLabel('ASSUMED_AMOUNT_UNKNOWN'), '인수 금액 확인 필요');
+  assert.equal(noticeAssumptionLabel('ASSUMED_AMOUNT_UNKNOWN'), '금액 미확정');
 });
 
 test('noticeAssumptionLabel은 모르는 코드를 숨기지 않고 그대로 노출한다', () => {
@@ -119,6 +120,8 @@ test('판정 문구에 판단·권유 표현을 쓰지 않는다 (D-011)', () =>
     ...Object.values(BURDEN_STATUS_LABEL),
     ...REGISTERED_BURDEN_RULES.flatMap((rule) => [rule.subject, rule.detail]),
     REGISTERED_BURDEN_NOTE,
+    // 용어 뜻풀이도 화면에 그대로 나가는 문구다 — 같은 검사를 받아야 한다
+    ...Object.values(GLOSSARY),
   ];
   for (const text of texts) {
     for (const word of banned) {
@@ -157,7 +160,7 @@ test('카드 라벨은 인수 확정 금액·미상·0원·명세서 미확인�
   const won = (value: number) => `${value.toLocaleString('ko-KR')}원`;
   assert.equal(assumedDepositCardLabel({ amount: 50_000_000, isLowerBound: false }, won), '보증금 인수 50,000,000원');
   assert.equal(assumedDepositCardLabel({ amount: 50_000_000, isLowerBound: true }, won), '보증금 인수 50,000,000원 이상');
-  assert.equal(assumedDepositCardLabel({ amount: 0, isLowerBound: true }, won), '인수 금액 확인 필요');
+  assert.equal(assumedDepositCardLabel({ amount: 0, isLowerBound: true }, won), '금액 미확정');
   assert.equal(assumedDepositCardLabel({ amount: 0, isLowerBound: false }, won), '보증금 인수 없음');
   // null(명세서 미확인)은 문구를 만들지 않는다 — 호출부가 "명세서 미확인"으로 따로 적는다
   assert.equal(assumedDepositCardLabel(null, won), null);

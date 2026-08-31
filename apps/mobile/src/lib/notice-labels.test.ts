@@ -101,7 +101,7 @@ describe('assumedDepositCardLabel', () => {
     ).toBe('보증금 인수 50,000,000원 이상');
     expect(
       assumedDepositCardLabel({ amount: 0, isLowerBound: true }, won),
-    ).toBe('인수 금액 확인 필요');
+    ).toBe('금액 미확정');
     expect(
       assumedDepositCardLabel({ amount: 0, isLowerBound: false }, won),
     ).toBe('보증금 인수 없음');
