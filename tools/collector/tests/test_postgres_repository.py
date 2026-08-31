@@ -492,3 +492,66 @@ def _tenant_rows(database_url: str) -> int:
         with conn.cursor() as cur:
             cur.execute("SELECT count(*) FROM auction_item_notice_tenant")
             return int(cur.fetchone()[0])
+
+
+@pytest.mark.skipif(
+    os.getenv("COLLECTOR_RUN_DB_TESTS") != "1",
+    reason="set COLLECTOR_RUN_DB_TESTS=1 to run PostGIS integration tests",
+)
+def test_postgres_notice_scan_saves_when_pdf_is_missing():
+    """PDF를 못 받은 회차도 스캔 결과를 저장한다.
+
+    실측(2026-08-21~31): 이 경로가 열흘간 20,518건 실패했다. 원인은
+    `pdf_fetched_at = CASE WHEN %s IS NULL ...`에서 PostgreSQL이 파라미터 타입을 추론하지
+    못한 것(`could not determine data type of parameter $6`)이다. COALESCE 자리는 컬럼과
+    비교되어 추론되지만 `IS NULL`은 단독이라 안 된다.
+
+    기존 테스트는 pdf_bytes에 값이 **있는** 경우만 봐서 이걸 놓쳤다. 실전에서는 열람 창 밖이라
+    PDF를 못 받는 쪽이 압도적으로 많다.
+    """
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        pytest.skip("DATABASE_URL is required")
+
+    repository = PostgresAuctionRepository(database_url)
+    run_migrations(database_url)
+    _reset_or_skip(repository)
+    page = parse_search_page(json.loads(FIXTURE_PATH.read_text(encoding="utf-8")))
+    repository.upsert_items(page.items)
+
+    notice = ItemNotice(
+        court_office_code="B000210",
+        case_no="2023타경4722",
+        item_no="1",
+        document_date=date(2026, 7, 3),
+        baseline_raw=None,
+        baseline_date=None,
+        distribution_demand_deadline=None,
+        assumed_rights_kind=None,
+        risk_flags=[],
+        lien_claim_amount=None,
+        tenants=(),
+        tenants_scanned=True,
+        pdf_bytes=None,  # PDF를 못 받은 회차
+    )
+
+    result = repository.upsert_notices([notice])
+
+    assert result.inserted + result.updated == 1
+    with psycopg.connect(database_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT n.tenant_scanned_at, n.pdf_fetched_at
+                FROM auction_item_notice n
+                JOIN auction_item ai ON ai.id = n.auction_item_id
+                JOIN auction_case ac ON ac.id = ai.auction_case_id
+                WHERE ac.case_no = '2023타경4722' AND ai.item_no = '1'
+                """
+            )
+            row = cur.fetchone()
+    assert row is not None
+    # 스캔 시각은 남는다 — "열었더니 없더라"와 "아직 못 열었다"를 가르는 기록이다
+    assert row[0] is not None
+    # PDF를 못 받았으므로 받은 시각은 비어 있어야 한다
+    assert row[1] is None

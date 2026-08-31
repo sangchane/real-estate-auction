@@ -676,7 +676,11 @@ def _replace_notice_tenants(cur: psycopg.Cursor[Any], notice_id: int, notice: It
                 -- 빈 값으로 덮지 않는다. 텍스트 레이어로 폴백한 회차가 이미 보관한 PDF를
                 -- 지우면 열람 창이 닫힌 뒤에는 복구할 수 없다 (017 tenant_text_region 과 같은 이유)
                 pdf_bytes = COALESCE(%s, pdf_bytes),
-                pdf_fetched_at = CASE WHEN %s IS NULL THEN pdf_fetched_at ELSE now() END
+                -- 캐스팅이 필요하다. COALESCE 자리는 컬럼과 비교되어 타입이 추론되지만
+                -- `IS NULL`은 단독이라 추론되지 않아 "could not determine data type of
+                -- parameter $6"으로 건마다 실패한다 — PDF를 못 받은 회차가 실전의 대다수라
+                -- 열흘간 20,518건을 잃었다 (§4-33)
+                pdf_fetched_at = CASE WHEN %s::bytea IS NULL THEN pdf_fetched_at ELSE now() END
             WHERE id = %s
             """,
             (
