@@ -3,10 +3,18 @@ import { BadRequestException, Controller, Get, NotFoundException, Param, Query }
 import type { Bbox } from '../auction-items/dto/bbox.dto';
 import type { DongBuildingAgeDto } from './dto/building-age.dto';
 import type { ZoneFeatureCollectionDto } from './dto/zone-feature.dto';
+import type { ItemZoningDistrictDto, ZoningFeatureCollectionDto } from './dto/zoning.dto';
 import { ZonesRepository } from './zones.repository';
 
 // 한 응답에 실을 구역 수 상한(설계 05 EP-1). 뷰포트를 아무리 넓혀도 응답이 무한정 커지지 않게 막는다.
 export const ZONE_FEATURE_LIMIT = 1000;
+
+// 용도지역 상한 (기획 12 §3.4의 실측 확정 절차). z14 뷰포트 실측(2026-09-01, 밀집 5곳):
+// 912~1,934 피처 — 정상 렌더 구간(웹은 z≥14에서만 그린다)이 잘리지 않는 값으로 2,000.
+// 상한을 낮춰 512KB를 맞추면 z14 화면 한가운데의 폴리곤이 조용히 빠진다 — 채움 레이어의 구멍은
+// "이 자리는 용도지역 없음"이라는 허위 사실이라, 크기는 클립·허용오차로만 줄인다(리포지토리 주석).
+// z13 이하 bbox(실측 2,323~5,594)는 잘리지만 그 줌에서는 웹이 레이어 대신 확대 안내를 띄운다.
+export const ZONING_FEATURE_LIMIT = 2000;
 
 const BBOX_PART_COUNT = 4;
 
@@ -59,6 +67,30 @@ export class ZonesController {
   @Get()
   async zones(@Query('bbox') bbox?: string): Promise<ZoneFeatureCollectionDto> {
     return this.repository.findZonesInBbox(parseBbox(bbox), ZONE_FEATURE_LIMIT);
+  }
+
+  /** bbox 안의 용도지역 폴리곤. bbox 검증·truncated 규약은 정비구역(GET /zones)과 같다 */
+  @Get('zoning')
+  async zoning(@Query('bbox') bbox?: string): Promise<ZoningFeatureCollectionDto> {
+    return this.repository.findZoningInBbox(parseBbox(bbox), ZONING_FEATURE_LIMIT);
+  }
+
+  /**
+   * 물건이 속한 용도지역 사실 목록 (건물 노후도와 같은 물건키 관례). 여러 건이 정상이다 —
+   * 원천이 같은 자리의 재고시 폴리곤을 함께 담는다(022 주석). 404는 좌표가 없거나 공간조인
+   * 전이라는 뜻이고, 화면은 섹션을 그리지 않는 것으로 응답한다.
+   */
+  @Get('zoning/:courtOfficeCode/:caseNo/:itemNo')
+  async itemZoning(
+    @Param('courtOfficeCode') courtOfficeCode: string,
+    @Param('caseNo') caseNo: string,
+    @Param('itemNo') itemNo: string,
+  ): Promise<ItemZoningDistrictDto[]> {
+    const districts = await this.repository.findZoningForItem(courtOfficeCode, caseNo, itemNo);
+    if (districts.length === 0) {
+      throw new NotFoundException('이 물건의 용도지역 정보가 아직 없어요');
+    }
+    return districts;
   }
 
   /**

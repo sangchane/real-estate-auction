@@ -1,4 +1,10 @@
-import { ZonesRepository, ratioPct, simplifyToleranceFor } from './zones.repository';
+import {
+  ZonesRepository,
+  clipBboxFor,
+  ratioPct,
+  simplifyToleranceFor,
+  zoningSimplifyToleranceFor,
+} from './zones.repository';
 
 const SEOUL_WIDE = { minLng: 126.76, minLat: 37.42, maxLng: 127.19, maxLat: 37.7 };
 const BLOCK = { minLng: 126.977, minLat: 37.565, maxLng: 126.985, maxLat: 37.571 };
@@ -127,6 +133,178 @@ describe('ZonesRepository', () => {
 
     expect(result.features[0]?.properties.zoneName).toBeNull();
     expect(result.features[0]?.properties.itemCount).toBe(0);
+  });
+});
+
+// z14 뷰포트 규모(폭 0.12°) — 사다리 양 끝 클램프에 걸리지 않는 구간이라 divisor 차이가 드러난다.
+const Z14 = { minLng: 126.9184, minLat: 37.5346, maxLng: 127.0384, maxLat: 37.6116 };
+
+describe('zoningSimplifyToleranceFor', () => {
+  it('같은 뷰포트에서 정비구역의 두 배로 굵다 — 채움 레이어라 윤곽 1~2px 대신 응답 크기를 산다', () => {
+    expect(zoningSimplifyToleranceFor(Z14)).toBeCloseTo(simplifyToleranceFor(Z14) * 2, 12);
+  });
+
+  it('허용오차는 정비구역과 같은 사다리 양 끝값 안에 갇힌다', () => {
+    const huge = zoningSimplifyToleranceFor({ minLng: 120, minLat: 30, maxLng: 132, maxLat: 40 });
+    const tiny = zoningSimplifyToleranceFor(BLOCK);
+
+    expect(huge).toBe(0.0005);
+    expect(tiny).toBe(0.00005);
+  });
+});
+
+describe('clipBboxFor', () => {
+  it('긴 변의 10%만큼 사방으로 넓힌다 — 절단이 만든 인공 경계선이 화면 밖에 놓인다', () => {
+    const clip = clipBboxFor(Z14);
+    const pad = 0.12 * 0.1;
+
+    expect(clip.minLng).toBeCloseTo(Z14.minLng - pad, 12);
+    expect(clip.minLat).toBeCloseTo(Z14.minLat - pad, 12);
+    expect(clip.maxLng).toBeCloseTo(Z14.maxLng + pad, 12);
+    expect(clip.maxLat).toBeCloseTo(Z14.maxLat + pad, 12);
+  });
+});
+
+function zoningRow(overrides: Record<string, unknown> = {}) {
+  return {
+    zoningId: '812',
+    zoningBucket: 'RES_GENERAL_2',
+    zoneNameRaw: '제2종일반주거지역(7층이하)',
+    sclasCl: 'UQA124',
+    mlsfcCl: null,
+    baseYm: '2026-02',
+    geometry:
+      '{"type":"Polygon","coordinates":[[[126.99,37.53],[127.0,37.53],[126.99,37.54],[126.99,37.53]]]}',
+    ...overrides,
+  };
+}
+
+describe('ZonesRepository 용도지역 bbox', () => {
+  it('bbox·클립·단순화·상한을 한 쿼리로 조립한다', async () => {
+    const pool = createMockPool([]);
+    const repository = new ZonesRepository(pool as never);
+
+    await repository.findZoningInBbox(Z14, 2000);
+
+    const [sql, params] = pool.query.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain('FROM zoning_district');
+    expect(sql).toContain('z.geom IS NOT NULL');
+    expect(sql).toContain('ST_Intersects');
+    expect(sql).toContain('ST_MakeEnvelope($1, $2, $3, $4, 4326)');
+    // 클립 상자는 요청 bbox($1~$4)가 아니라 패딩 상자($6~$9)다 — 뷰포트 경계에서 잘리면 인공 경계가 보인다
+    expect(sql).toContain('ST_ClipByBox2D(z.geom, ST_MakeEnvelope($6, $7, $8, $9, 4326))');
+    expect(sql).toContain('ST_SimplifyPreserveTopology');
+    // 좌표 정밀도는 6자리 고정 — 정비구역과 같은 규약 (설계 08 m-14)
+    expect(sql).toContain('$5), 6)');
+    expect(sql).toContain('LIMIT $10');
+
+    const clip = clipBboxFor(Z14);
+    expect(params).toEqual([
+      Z14.minLng,
+      Z14.minLat,
+      Z14.maxLng,
+      Z14.maxLat,
+      zoningSimplifyToleranceFor(Z14),
+      clip.minLng,
+      clip.minLat,
+      clip.maxLng,
+      clip.maxLat,
+      2001,
+    ]);
+  });
+
+  it('상한을 넘겼는지 알려고 limit+1을 읽고, 넘치면 잘라 truncated를 세운다', async () => {
+    const pool = createMockPool([zoningRow({ zoningId: '1' }), zoningRow({ zoningId: '2' })]);
+    const repository = new ZonesRepository(pool as never);
+
+    const result = await repository.findZoningInBbox(Z14, 1);
+
+    expect(result.truncated).toBe(true);
+    expect(result.features).toHaveLength(1);
+  });
+
+  it('행을 Feature로 바꾸고 버킷(채색 키)과 원문 명칭·코드를 함께 싣는다', async () => {
+    const pool = createMockPool([zoningRow()]);
+    const repository = new ZonesRepository(pool as never);
+
+    const result = await repository.findZoningInBbox(Z14, 2000);
+
+    expect(result.type).toBe('FeatureCollection');
+    expect(result.truncated).toBe(false);
+    expect(result.features).toEqual([
+      {
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[126.99, 37.53], [127.0, 37.53], [126.99, 37.54], [126.99, 37.53]]],
+        },
+        properties: {
+          zoningId: 812,
+          zoningBucket: 'RES_GENERAL_2',
+          zoneNameRaw: '제2종일반주거지역(7층이하)',
+          sclasCl: 'UQA124',
+          mlsfcCl: null,
+        },
+      },
+    ]);
+  });
+
+  it('미분류 행은 버킷 null 그대로다 — 가까운 버킷으로 추측 배정하지 않는다 (기획 12 §2.4)', async () => {
+    const pool = createMockPool([
+      zoningRow({ zoningBucket: null, zoneNameRaw: '기타 도시지역', sclasCl: null, mlsfcCl: null }),
+    ]);
+    const repository = new ZonesRepository(pool as never);
+
+    const feature = (await repository.findZoningInBbox(Z14, 2000)).features[0];
+    // 피처가 없으면 아래 단언이 통째로 건너뛰어져 초록불이 거짓말을 한다
+    expect(feature).toBeDefined();
+    const { properties } = feature as NonNullable<typeof feature>;
+
+    expect(properties.zoningBucket).toBeNull();
+    // 화면이 카드에 낼 원문은 그대로 살아 있어야 한다
+    expect(properties.zoneNameRaw).toBe('기타 도시지역');
+  });
+
+  it('기준연월은 컬렉션에 한 번만 싣고, 피처가 없으면 null이다', async () => {
+    const repository = new ZonesRepository(createMockPool([zoningRow()]) as never);
+    const empty = new ZonesRepository(createMockPool([]) as never);
+
+    expect((await repository.findZoningInBbox(Z14, 2000)).baseYm).toBe('2026-02');
+    expect((await empty.findZoningInBbox(Z14, 2000)).baseYm).toBeNull();
+  });
+});
+
+describe('ZonesRepository 물건 용도지역', () => {
+  it('물건키로 사전계산 조인을 타고, 재고시 겹침(여러 행)을 전부 내린다', async () => {
+    const rowA = {
+      zoningId: '812',
+      zoningBucket: 'RES_GENERAL_2',
+      zoneNameRaw: '제2종일반주거지역(7층이하)',
+      sclasCl: 'UQA124',
+      mlsfcCl: null,
+      baseYm: '2026-02',
+    };
+    const rowB = { ...rowA, zoningId: '4102', zoningBucket: null, zoneNameRaw: '기타 도시지역' };
+    const pool = createMockPool([rowA, rowB]);
+    const repository = new ZonesRepository(pool as never);
+
+    const districts = await repository.findZoningForItem('B000210', '2024타경1234', '1');
+
+    const [sql, params] = pool.query.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain('FROM auction_item ai');
+    expect(sql).toContain('JOIN auction_item_zoning link');
+    expect(sql).toContain('JOIN zoning_district zd');
+    expect(params).toEqual(['B000210', '2024타경1234', '1']);
+    expect(districts).toEqual([
+      { ...rowA, zoningId: 812 },
+      { ...rowB, zoningId: 4102 },
+    ]);
+  });
+
+  it('매칭이 없으면 빈 배열 — 404 판정은 컨트롤러의 몫이다', async () => {
+    const repository = new ZonesRepository(createMockPool([]) as never);
+
+    expect(await repository.findZoningForItem('B000210', '2024타경1234', '1')).toEqual([]);
   });
 });
 

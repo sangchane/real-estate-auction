@@ -9,7 +9,7 @@ import os
 import psycopg
 import pytest
 
-from collector.zone_join import recompute_dong, recompute_zone
+from collector.zone_join import recompute_dong, recompute_zone, recompute_zoning
 
 
 # 사각형 동 하나. 안쪽 물건 1 · 경계선 위 물건 1 · geom NULL 물건 1 로 세 경우를 한 번에 본다.
@@ -192,6 +192,104 @@ def test_pair_that_no_longer_overlaps_loses_its_row():
             "SELECT auction_item_id, zone_id FROM auction_item_zone ORDER BY auction_item_id, zone_id"
         ).fetchall()
         assert remaining == [(1, 10), (1, 11), (2, 10)]
+        assert result.removed == 1
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+# 용도지역 셋: 폴리곤 20·21은 같은 자리(재고시 중복 — 실측에서 다중 매치의 주원인), 물건 2는
+# 폴리곤 20의 경계선 위, 폴리곤 22는 도형 없는 행(원천 실측 1건)이라 아무 물건에도 붙지 않아야 한다.
+_ZONING_FIXTURE_SQL = """
+CREATE TEMP TABLE zoning_district (
+    id BIGINT PRIMARY KEY,
+    source TEXT,
+    base_ym TEXT,
+    zoning_bucket TEXT,
+    geom geometry(MultiPolygon, 4326)
+) ON COMMIT DROP;
+
+CREATE TEMP TABLE auction_item_zoning (
+    auction_item_id BIGINT NOT NULL,
+    zoning_district_id BIGINT NOT NULL,
+    computed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (auction_item_id, zoning_district_id)
+) ON COMMIT DROP;
+
+INSERT INTO zoning_district VALUES
+    (20, 'SEOUL_OA21136', '2026-02', 'RES_GENERAL_2',
+     ST_Multi(ST_GeomFromText('POLYGON((127 37,127 38,128 38,128 37,127 37))', 4326))),
+    (21, 'SEOUL_OA21136', '2026-02', 'RES_GENERAL_2',
+     ST_Multi(ST_GeomFromText('POLYGON((127.4 37.4,127.4 37.6,127.6 37.6,127.6 37.4,127.4 37.4))', 4326))),
+    (22, 'SEOUL_OA21136', '2026-02', 'OTHER', NULL);
+"""
+
+
+def _connect_with_zoning_fixture():
+    conn = _connect_with_fixture()
+    conn.execute(_ZONING_FIXTURE_SQL)
+    return conn
+
+
+def test_zoning_intersects_keeps_overlapping_notices_and_the_boundary_item():
+    """물건×용도지역은 ST_Intersects 쌍 테이블이다 — 물건당 한 행이 아니다.
+
+    용도지역은 원칙상 배타 분할이지만 원천은 같은 자리의 옛 고시·재고시 폴리곤을 함께 담아
+    (실측 2026-09-01: 528물건 10.6%가 폴리곤 두 장 이상의 안쪽) 물건당 한 행을 강제하면
+    남길 고시를 추측으로 고르게 된다. 두 행 다 사실이므로 둘 다 남긴다.
+    """
+    conn = _connect_with_zoning_fixture()
+    try:
+        result = recompute_zoning(conn)
+
+        rows = conn.execute(
+            "SELECT auction_item_id, zoning_district_id FROM auction_item_zoning"
+            " ORDER BY auction_item_id, zoning_district_id"
+        ).fetchall()
+        # 물건 1은 겹친 폴리곤 20·21 둘 다, 경계선 위 물건 2는 20에만, 도형 없는 22는 아무데도.
+        assert rows == [(1, 20), (1, 21), (2, 20)]
+        assert (result.items, result.districts, result.pairs) == (2, 2, 3)
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+def test_zoning_rerun_does_not_change_rows():
+    # 같은 실행을 연달아 돌려도 행 수·값이 불변이어야 한다 (엣지 B-4).
+    conn = _connect_with_zoning_fixture()
+    try:
+        recompute_zoning(conn)
+        first = conn.execute(
+            "SELECT auction_item_id, zoning_district_id FROM auction_item_zoning"
+        ).fetchall()
+
+        second_result = recompute_zoning(conn)
+
+        second = conn.execute(
+            "SELECT auction_item_id, zoning_district_id FROM auction_item_zoning"
+        ).fetchall()
+        assert sorted(first) == sorted(second)
+        assert second_result.pairs == 3
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+def test_zoning_pair_that_no_longer_overlaps_loses_its_row():
+    """전량 교체로 id가 바뀌거나 좌표가 고쳐져 이제 안 겹치는 짝을 남기면 화면이 옛 용도지역을 계속 사실로 말한다."""
+    conn = _connect_with_zoning_fixture()
+    try:
+        conn.execute(
+            "INSERT INTO auction_item_zoning (auction_item_id, zoning_district_id) VALUES (3, 20)"
+        )
+
+        result = recompute_zoning(conn)
+
+        remaining = conn.execute(
+            "SELECT auction_item_id, zoning_district_id FROM auction_item_zoning"
+            " ORDER BY auction_item_id, zoning_district_id"
+        ).fetchall()
+        assert remaining == [(1, 20), (1, 21), (2, 20)]
         assert result.removed == 1
     finally:
         conn.rollback()

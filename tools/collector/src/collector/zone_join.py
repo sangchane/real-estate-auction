@@ -1,4 +1,4 @@
-# 물건 좌표를 법정동·정비구역 경계에 공간조인해 `auction_item_dong`·`auction_item_zone`에 사전계산한다.
+# 물건 좌표를 법정동·정비구역·용도지역 경계에 공간조인해 `auction_item_dong`·`auction_item_zone`·`auction_item_zoning`에 사전계산한다.
 from __future__ import annotations
 
 import argparse
@@ -24,6 +24,14 @@ class DongJoinResult:
 class ZoneJoinResult:
     items: int
     zones: int
+    pairs: int
+    removed: int
+
+
+@dataclass(frozen=True)
+class ZoningJoinResult:
+    items: int
+    districts: int
     pairs: int
     removed: int
 
@@ -138,18 +146,74 @@ def recompute_zone(conn: psycopg.Connection) -> ZoneJoinResult:
     return result
 
 
+# 포함 기준은 ST_Intersects + 쌍 테이블이다 — 용도지역은 원칙상 배타 분할이라 기획(12 §2.5)은
+# 물건당 한 행의 ST_Contains를 제안했지만, 실측(2026-09-01, 물건 4,960 × 폴리곤 8,311)에서
+# 528물건(10.6%)이 폴리곤 두 장 이상의 '안쪽'에 있었다(경계선 위가 아니다 — Contains로 세도
+# 동수). 원천이 같은 자리의 옛 고시·재고시 폴리곤을 함께 담기 때문이다(겹침쌍 289 중 258이
+# 같은 유형·겹침율 ~100%, 그중 26쌍은 도형까지 동일). 물건당 한 행을 강제하면 남길 고시를
+# 추측으로 고르게 되므로(zoning_bucket의 추측 배정 금지와 같은 원칙) 구역 조인과 같은 쌍
+# 테이블을 쓴다. 도형 없는 행(원천 실측 1건)은 ST_Intersects가 NULL을 돌려주어 자연히 빠진다.
+_ZONING_UPSERT_SQL = """
+INSERT INTO auction_item_zoning (auction_item_id, zoning_district_id, computed_at)
+SELECT item.id, zd.id, now()
+FROM auction_item AS item
+JOIN zoning_district AS zd ON ST_Intersects(zd.geom, item.geom)
+WHERE item.geom IS NOT NULL
+ON CONFLICT (auction_item_id, zoning_district_id) DO UPDATE SET
+    computed_at = EXCLUDED.computed_at
+"""
+
+# 전량 교체는 CASCADE가 짝을 지우므로 여기서 지울 것은 좌표가 고쳐져 이제 안 겹치는 짝이다.
+# 조인은 파생물이라 재계산이 곧 복구다 (07 오염 복구 ④) — 남겨 두면 화면이 옛 용도지역을
+# 계속 사실로 말한다.
+_ZONING_DELETE_ORPHAN_SQL = """
+DELETE FROM auction_item_zoning AS link
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM auction_item AS item
+    JOIN zoning_district AS zd ON ST_Intersects(zd.geom, item.geom)
+    WHERE item.id = link.auction_item_id
+      AND zd.id = link.zoning_district_id
+)
+"""
+
+_ZONING_TOTAL_SQL = "SELECT count(*) FROM zoning_district WHERE geom IS NOT NULL"
+
+
+def recompute_zoning(conn: psycopg.Connection) -> ZoningJoinResult:
+    """좌표가 있는 전 물건의 용도지역 겹침을 다시 계산한다. 커밋은 호출자가 한다."""
+    with conn.cursor() as cur:
+        items = cur.execute(_TOTAL_SQL).fetchone()[0]
+        districts = cur.execute(_ZONING_TOTAL_SQL).fetchone()[0]
+        cur.execute(_ZONING_UPSERT_SQL)
+        pairs = cur.rowcount
+        cur.execute(_ZONING_DELETE_ORPHAN_SQL)
+        removed = cur.rowcount
+
+    result = ZoningJoinResult(items=items, districts=districts, pairs=pairs, removed=removed)
+    logger.info(
+        "zoning_join_done items=%s districts=%s pairs=%s removed=%s",
+        result.items,
+        result.districts,
+        result.pairs,
+        result.removed,
+    )
+    return result
+
+
 def main(argv: list[str] | None = None) -> None:
     argparse.ArgumentParser(
         prog="collector.zone_join",
-        description="물건을 법정동·정비구역 경계에 공간조인해 사전계산 표를 채운다",
+        description="물건을 법정동·정비구역·용도지역 경계에 공간조인해 사전계산 표를 채운다",
     ).parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     config = load_config()
-    # 둘 다 파생물이라 한 트랜잭션에서 같은 시점의 경계로 다시 만든다.
+    # 셋 다 파생물이라 한 트랜잭션에서 같은 시점의 경계로 다시 만든다.
     with psycopg.connect(config.database_url) as conn:
         recompute_dong(conn)
         recompute_zone(conn)
+        recompute_zoning(conn)
 
 
 if __name__ == "__main__":
