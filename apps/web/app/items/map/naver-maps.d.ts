@@ -61,21 +61,30 @@ declare namespace naver.maps {
     setMap(map: Map | null): void;
   }
 
-  interface PolygonOptions {
-    map?: Map;
-    /** 링 목록. 첫 링이 바깥 경계이고 나머지는 구멍이다. */
-    paths: LatLng[][];
+  /** 칸을 재사용하며 바뀌는 시각 속성 — 용도지역은 폴리곤마다 채움색이 다르다 */
+  interface PolygonStyleOptions {
+    fillColor?: string;
     fillOpacity?: number;
     strokeColor?: string;
     strokeOpacity?: number;
     strokeWeight?: number;
+  }
+
+  interface PolygonOptions extends PolygonStyleOptions {
+    map?: Map;
+    /** 링 목록. 첫 링이 바깥 경계이고 나머지는 구멍이다. */
+    paths: LatLng[][];
     clickable?: boolean;
+    /** 겹칠 때 위에 오는 순서. 구역(윤곽선)이 용도지역(채움)보다 위다 (기획 12 §3.5) */
+    zIndex?: number;
   }
 
   class Polygon {
     constructor(options: PolygonOptions);
     /** 인스턴스를 재사용해 다른 구역을 그릴 때 쓴다 — 새로 만들지 않고 좌표만 갈아 끼운다. */
     setPaths(paths: LatLng[][]): void;
+    /** 칸을 재사용할 때 채움색 등 시각 속성을 갈아 끼운다 */
+    setOptions(options: PolygonStyleOptions): void;
     setMap(map: Map | null): void;
   }
 

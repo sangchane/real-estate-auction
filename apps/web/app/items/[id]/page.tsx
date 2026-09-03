@@ -3,8 +3,14 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { fetchAuctionItem, fetchAuctionItemPhotos, fetchDongBuildingAge } from '../api-client';
+import {
+  fetchAuctionItem,
+  fetchAuctionItemPhotos,
+  fetchDongBuildingAge,
+  fetchItemZoning,
+} from '../api-client';
 import { buildingAgeSummary, buildingAgeUnknownNote } from '../building-age';
+import { dedupeZoning, zoningDisplayName, zoningOverlapNote, zoningSourceNote } from '../zoning';
 import { Badge } from '../components/Badge';
 import { FavoriteButton } from '../components/FavoriteButton';
 import {
@@ -63,6 +69,10 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
   const photos = await fetchAuctionItemPhotos(key);
   // 물건이 속한 동의 노후도 사실. null이면 섹션을 그리지 않는다 — 없는 집계를 0%로 그리지 않는다
   const buildingAge = await fetchDongBuildingAge(key);
+  // 물건 자리의 용도지역. 빈 배열이면 섹션을 그리지 않는다 (같은 이유).
+  // 보여줄 값이 같은 폴리곤은 접는다 — 원천이 같은 자리의 재고시 폴리곤을 함께 담아 실측 399물건이
+  // 같은 문장을 두 번 이상 반복하게 된다(최대 7번).
+  const zoningDistricts = dedupeZoning(await fetchItemZoning(key));
 
   const minimumBidRate = computeMinimumBidRate(item.appraisalAmount, item.minimumSalePrice);
   const bidDatetimeLabel = formatBidDatetime(item.bidDatetime);
@@ -175,6 +185,31 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
           {buildingAgeUnknownNote(buildingAge) ? (
             <p className={styles.buildingAgeNote}>{buildingAgeUnknownNote(buildingAge)}</p>
           ) : null}
+        </section>
+      ) : null}
+
+      {/* 용도지역("몇 종 지역") — 서울시가 공개한 도면 사실(FR-021). 종은 국토계획법이 정한 법정
+          세분의 순서일 뿐 좋고 나쁨이 아니라서, 이름과 코드 원문만 적고 해석은 붙이지 않는다(D-011).
+          여러 건이면 전부 적는다 — 한 건만 고르는 것 자체가 추측이다(마이그레이션 022 주석). */}
+      {zoningDistricts.length > 0 ? (
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>용도지역</h2>
+          <ul className={styles.zoningList}>
+            {zoningDistricts.map((district) => (
+              <li key={district.zoningId} className={styles.zoningItem}>
+                <span className={styles.zoningName}>{zoningDisplayName(district)}</span>
+                {(district.sclasCl ?? district.mlsfcCl) ? (
+                  <span className={styles.zoningCode}>{district.sclasCl ?? district.mlsfcCl}</span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          {zoningOverlapNote(zoningDistricts) ? (
+            <p className={styles.zoningNote}>{zoningOverlapNote(zoningDistricts)}</p>
+          ) : null}
+          <p className={styles.zoningNote}>
+            {zoningSourceNote(zoningDistricts.map((district) => district.baseYm))}
+          </p>
         </section>
       ) : null}
 

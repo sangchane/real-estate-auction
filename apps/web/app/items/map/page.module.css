@@ -296,3 +296,71 @@
 .zoneSpecsValue {
   color: var(--color-ink-deep);
 }
+
+/* 용도지역 카드의 출처 줄 — 원천이 스스로 "법적 효력 없는 참고자료"라고 고지하므로 그대로 싣는다
+   (기획 12 §2.2). 사실을 말한 뒤 그 한계를 같은 카드 안에서 붙여 둔다. */
+.zoneCardSource {
+  margin: var(--spacing-xs) 0 0;
+  font-size: var(--typography-caption-font-size);
+  color: var(--color-steel);
+  line-height: 1.4;
+}
+
+/* 범례 — 코로플레스는 범례 없이 읽을 수 없다. 좌측은 물건 패널, 우상단은 지도 SDK 기본 컨트롤이
+   차지하므로 우하단이 유일하게 안전한 코너다 (기획 12 §3.3). 정보 그래픽이지 행동 레이어가
+   아니라서 그림자는 카드(shadow-md)가 아니라 헤어라인 보더 + shadow-sm으로 낮춘다(T-14). */
+.legend {
+  position: absolute;
+  right: var(--spacing-base);
+  bottom: var(--spacing-base);
+  z-index: 10;
+  width: 200px;
+  background-color: var(--color-canvas);
+  border: 1px solid var(--color-hairline-soft);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--spacing-sm) var(--spacing-base);
+}
+
+.legendTitle {
+  margin: 0 0 var(--spacing-xs);
+  font-size: var(--typography-body-sm-bold-font-size);
+  font-weight: var(--typography-body-sm-bold-font-weight);
+  color: var(--color-ink-deep);
+}
+
+.legendRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+/* 스와치에도 보더를 두는 이유: 가장 밝은 1단은 흰 배경과 대비가 얇아 보더가 없으면 칸 자체가
+   안 보인다. 지도 위 폴리곤은 윤곽선이 그 역할을 한다 (기획 12 §4.4의 2차 인코딩). */
+.legendSwatch {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-sm);
+}
+
+/* "그 밖의 용도지역"은 채색하지 않는다는 사실 자체를 보여준다 — 빈 칸이 곧 지도에서의 모습이다 */
+.legendSwatchNeutral {
+  background-color: transparent;
+}
+
+.legendLabel {
+  font-size: var(--typography-caption-font-size);
+  color: var(--color-ink-deep);
+}
+
+.legendSource {
+  margin: var(--spacing-xs) 0 0;
+  padding-top: var(--spacing-xs);
+  border-top: 1px solid var(--color-hairline-soft);
+  font-size: var(--typography-caption-font-size);
+  color: var(--color-steel);
+  line-height: 1.4;
+}

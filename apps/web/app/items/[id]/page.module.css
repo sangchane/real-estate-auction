@@ -229,3 +229,38 @@
   line-height: 1.5;
   margin: 4px 0 0;
 }
+
+/* 용도지역 — 원문 명칭 + 코드 한 줄씩. 여러 건이 정상이라(원천이 같은 자리의 재고시 폴리곤을
+   함께 담는다) 목록으로 둔다. 순위나 강조를 주지 않는다 — 어느 하나가 대표라는 주장이 없다. */
+.zoningList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.zoningItem {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.zoningName {
+  font-size: var(--typography-body-md-font-size);
+  color: var(--color-ink);
+  line-height: 1.6;
+}
+
+.zoningCode {
+  font-size: var(--typography-caption-font-size);
+  color: var(--color-steel);
+}
+
+.zoningNote {
+  font-size: var(--typography-body-sm-font-size);
+  color: var(--color-steel);
+  line-height: 1.5;
+  margin: 8px 0 0;
+}

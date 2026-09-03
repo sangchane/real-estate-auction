@@ -1,6 +1,6 @@
 // 지도 탐색 화면의 클라이언트 로직 — 네이버 Web Dynamic Map 스크립트 로드, 카메라 idle마다 bbox 재조회,
 // 줌에 따라 클러스터 버블/개별 마커(가격 캡션) 전환, 마커 클릭 시 물건 상세로 이동한다 (모바일 F-01과 동일 문법).
-// 지적편집도·정비구역은 같은 idle 리듬에 얹은 선택 레이어다.
+// 지적편집도·정비구역·용도지역은 같은 idle 리듬에 얹은 선택 레이어다.
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -17,12 +17,23 @@ import {
   USAGE_CATEGORY_LABEL,
   type UsageCategory,
 } from './usage-category';
+import { zoningDisplayName, zoningSourceNote } from '../zoning';
+import { detachPolygons, syncPolygons, type PolygonSlot } from './polygon-pool';
 import {
   parseZoneCollection,
   ZONE_MIN_ZOOM,
   type ZoneFeature,
   type ZoneProperties,
 } from './zone-layer';
+import {
+  parseZoningCollection,
+  zoningAt,
+  zoningFillColor,
+  ZONING_LEGEND,
+  ZONING_MIN_ZOOM,
+  type ZoningFeature,
+  type ZoningProperties,
+} from './zoning-layer';
 import styles from './page.module.css';
 
 const NCP_MAPS_CLIENT_ID = process.env.NEXT_PUBLIC_NCP_MAPS_CLIENT_ID;
@@ -50,6 +61,21 @@ const ZONE_FILL_OPACITY = 0;
 const ZONE_STROKE_WEIGHT = 2;
 const ZONE_STROKE_OPACITY = 0.9;
 
+// 용도지역은 반대로 **면을 칠하는** 레이어다 — 사용자 질문("여기가 몇 종이냐")의 답이 면 전체의
+// 성질이라 윤곽선으로는 답이 안 된다. 채움이 바탕지도의 지명·도로를 지우지 않는 선이 0.5 언저리이고,
+// 폴리곤이 촘촘히 붙어 있어 경계는 얇은 흰 선으로만 갈라 준다(색 경계가 곧 용도지역 경계다).
+const ZONING_FILL_OPACITY = 0.5;
+const ZONING_STROKE_WEIGHT = 1;
+const ZONING_STROKE_OPACITY = 0.45;
+// 채색하지 않는 폴리곤(그 밖·미분류)은 채움을 0으로 두고 자리만 남긴다 — 색을 주면 허위 사실이 되고,
+// 아예 안 그리면 클릭해서 원문을 볼 수단이 사라진다.
+const ZONING_NEUTRAL_FILL_OPACITY = 0;
+
+// 겹칠 때 구역(윤곽선)이 용도지역(채움) 위다 — 구역이 더 희소한 정보라 클릭도 구역이 먼저 받는다
+// (기획 12 §3.5). 면 사실은 구역 카드 하단에 한 줄로 병기해 잃지 않는다.
+const ZONE_Z_INDEX = 2;
+const ZONING_Z_INDEX = 1;
+
 // 레이어를 켰는데 화면이 비어 있을 때 그 이유를 적는다. 이유가 없으면 "이 동네에 구역이 없다"로 읽힌다.
 type ZoneNotice = 'none' | 'zoomIn' | 'truncated' | 'error';
 
@@ -59,17 +85,12 @@ const ZONE_NOTICE_TEXT: Record<Exclude<ZoneNotice, 'none'>, string> = {
   error: '정비구역을 불러오지 못했어요.',
 };
 
-/** 재사용하는 폴리곤 한 칸. 담긴 구역이 바뀌므로 클릭 시점에 feature를 읽어야 한다. */
-interface ZonePolygonSlot {
-  polygon: naver.maps.Polygon;
-  feature: ZoneFeature | null;
-  /**
-   * 지금 지도에 붙어 있는지. SDK의 setMap은 같은 지도를 다시 넘겨도 그냥 넘어가지 않고 매번
-   * 오버레이를 다시 단다 — 실측에서 이미 붙은 폴리곤 100개에 setMap(map)을 다시 부르는 데만
-   * 92ms가 들었다. 붙은 칸을 건너뛰려고 붙임 상태를 우리가 들고 있는다.
-   */
-  attached: boolean;
-}
+const ZONING_NOTICE_TEXT: Record<Exclude<ZoneNotice, 'none'>, string> = {
+  zoomIn: '용도지역은 지도를 조금 더 확대하면 보여요.',
+  // 잘린 채로 그리면 화면 한가운데가 뚫려 "이 자리는 용도지역 없음"으로 읽힌다 — 그래서 이유를 적는다.
+  truncated: '이 범위에 용도지역이 많아 일부만 그렸어요.',
+  error: '용도지역을 불러오지 못했어요.',
+};
 
 interface AuctionItemPin {
   courtOfficeCode: string;
@@ -179,12 +200,12 @@ export function MapView() {
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<naver.maps.Map | null>(null);
   // 지적편집도(필지 경계·지번·지목). 지도 SDK가 타일로 그려주므로 우리가 적재할 데이터가 없다.
-  // 용도지역("몇 종 지역")은 이 레이어에 없다 — 그건 별도 원천(OA-21136)이 필요하다 (기획 12).
+  // 용도지역("몇 종 지역")은 이 레이어에 없어서 별도 원천(OA-21136)을 적재해 아래 용도지역 레이어로 그린다.
   const cadastralRef = useRef<naver.maps.CadastralLayer | null>(null);
   const [cadastralOn, setCadastralOn] = useState(false);
   // 정비구역 폴리곤. 뷰포트를 옮길 때마다 인스턴스를 새로 만들면 수백 개가 생겼다 버려지므로
   // 칸을 만들어 두고 좌표만 갈아 끼운다. 남는 칸은 지우지 않고 지도에서만 뗀다.
-  const zoneSlotsRef = useRef<ZonePolygonSlot[]>([]);
+  const zoneSlotsRef = useRef<PolygonSlot<ZoneFeature>[]>([]);
   const [zonesOn, setZonesOn] = useState(false);
   // idle 리스너는 지도를 만들 때 한 번만 걸리므로 그 클로저는 토글의 최신 값을 볼 수 없다 —
   // 호버 좌표와 같은 이유로 state가 아니라 ref로도 들고 있는다.
@@ -192,6 +213,21 @@ export function MapView() {
   const zoneRequestIdRef = useRef(0);
   const [zoneNotice, setZoneNotice] = useState<ZoneNotice>('none');
   const [selectedZone, setSelectedZone] = useState<ZoneProperties | null>(null);
+  // 용도지역 폴리곤. 구역과 같은 칸 재사용 방식이지만 개수가 한 자릿수 위(z14 실측 912~1,934)라
+  // 새로 만들었다 버리는 비용이 그만큼 크다.
+  const zoningSlotsRef = useRef<PolygonSlot<ZoningFeature>[]>([]);
+  const [zoningOn, setZoningOn] = useState(false);
+  const zoningOnRef = useRef(false);
+  const zoningRequestIdRef = useRef(0);
+  const [zoningNotice, setZoningNotice] = useState<ZoneNotice>('none');
+  const [selectedZoning, setSelectedZoning] = useState<ZoningProperties | null>(null);
+  // 범례의 출처 표기가 쓰는 기준연월. 응답이 실어 오는 값이라 화면이 지어내지 않는다.
+  const [zoningBaseYm, setZoningBaseYm] = useState<string | null>(null);
+  // 구역 카드 하단의 용도지역 병기에 쓴다 — 그리는 데 쓴 피처를 그대로 재사용해 서버에 다시 묻지 않는다.
+  const zoningFeaturesRef = useRef<ZoningFeature[]>([]);
+  // 열려 있는 구역 카드가 병기할 용도지역. 클릭 시점에 정해 둔다 — 카드가 열린 뒤 뷰포트가 움직여
+  // 폴리곤이 다시 그려져도 카드는 누른 자리의 사실을 계속 말한다.
+  const [zoneClickZoning, setZoneClickZoning] = useState<ZoningProperties | null>(null);
   const idleListenerRef = useRef<naver.maps.MapEventListener | null>(null);
   const boundsListenerRef = useRef<naver.maps.MapEventListener | null>(null);
   const markersRef = useRef<naver.maps.Marker[]>([]);
@@ -262,64 +298,69 @@ export function MapView() {
     }
   }, []);
 
-  /** 폴리곤을 지도에서 뗀다. 인스턴스는 남겨 다음 조회에서 다시 쓴다. */
-  const hideZones = useCallback(() => {
-    for (const slot of zoneSlotsRef.current) {
-      if (!slot.attached) continue;
-      slot.polygon.setMap(null);
-      slot.attached = false;
-      slot.feature = null;
-    }
-  }, []);
+  const hideZones = useCallback(() => detachPolygons(zoneSlotsRef.current), []);
 
   const drawZones = useCallback((map: naver.maps.Map, features: ZoneFeature[]) => {
     const naverMaps = window.naver?.maps;
     if (!naverMaps) return;
-    const slots = zoneSlotsRef.current;
-
-    features.forEach((feature, index) => {
-      const paths = feature.rings.map((ring) =>
-        ring.map(([lng, lat]) => new naverMaps.LatLng(lat, lng)),
-      );
-      const slot = slots[index];
-      if (slot === undefined) {
-        const created: ZonePolygonSlot = {
-          polygon: new naverMaps.Polygon({
-            map,
-            paths,
-            fillOpacity: ZONE_FILL_OPACITY,
-            strokeColor: colors.mapZoneOutline,
-            strokeOpacity: ZONE_STROKE_OPACITY,
-            strokeWeight: ZONE_STROKE_WEIGHT,
-            clickable: true,
-          }),
-          feature,
-          attached: true,
-        };
-        // 리스너는 인스턴스마다 한 번만 건다. 칸이 재사용되며 담긴 구역이 바뀌므로 생성 시점의
-        // feature를 클로저에 가두면 클릭했을 때 옛 구역이 열린다 — 칸을 통해 지금 값을 읽는다.
-        naverMaps.Event.addListener(created.polygon, 'click', () => {
-          if (created.feature !== null) setSelectedZone(created.feature.properties);
-        });
-        slots.push(created);
-        return;
-      }
-      slot.feature = feature;
-      slot.polygon.setPaths(paths);
-      // 이미 붙어 있으면 다시 달지 않는다 — 패닝마다 전 폴리곤을 재부착하면 그만큼 화면이 멎는다.
-      if (!slot.attached) {
-        slot.polygon.setMap(map);
-        slot.attached = true;
-      }
+    syncPolygons({
+      map,
+      naverMaps,
+      slots: zoneSlotsRef.current,
+      features,
+      ringsOf: (feature) => feature.rings,
+      styleOf: () => ({
+        fillOpacity: ZONE_FILL_OPACITY,
+        strokeColor: colors.mapZoneOutline,
+        strokeOpacity: ZONE_STROKE_OPACITY,
+        strokeWeight: ZONE_STROKE_WEIGHT,
+      }),
+      zIndex: ZONE_Z_INDEX,
+      onClick: (feature, coord) => {
+        setSelectedZone(feature.properties);
+        // 구역이 위라 겹친 지점의 클릭은 구역 카드가 받는다. 그 자리의 용도지역을 클릭 시점에
+        // 같이 집어 카드 하단에 병기한다 (기획 12 §3.5) — 안 그러면 면 사실이 그냥 사라진다.
+        setZoneClickZoning(
+          coord === null ? null : (zoningAt(zoningFeaturesRef.current, coord.lng, coord.lat)?.properties ?? null),
+        );
+      },
     });
+  }, []);
 
-    for (let index = features.length; index < slots.length; index += 1) {
-      const spare = slots[index];
-      if (spare === undefined || !spare.attached) continue;
-      spare.polygon.setMap(null);
-      spare.attached = false;
-      spare.feature = null;
-    }
+  const hideZoning = useCallback(() => {
+    detachPolygons(zoningSlotsRef.current);
+    // 화면에서 뗀 폴리곤은 병기의 근거가 될 수 없다 — 옛 뷰포트의 사실을 남겨 두지 않는다.
+    zoningFeaturesRef.current = [];
+  }, []);
+
+  const drawZoning = useCallback((map: naver.maps.Map, features: ZoningFeature[]) => {
+    const naverMaps = window.naver?.maps;
+    if (!naverMaps) return;
+    // 구역 카드가 "그 자리의 용도지역"을 병기할 때 다시 조회하지 않고 지금 그린 것에서 찾는다.
+    zoningFeaturesRef.current = features;
+    syncPolygons({
+      map,
+      naverMaps,
+      slots: zoningSlotsRef.current,
+      features,
+      ringsOf: (feature) => feature.rings,
+      styleOf: (feature) => {
+        const fill = zoningFillColor(feature.properties.zoningBucket);
+        return {
+          // 색이 없는 버킷(그 밖·미분류)은 채움을 0으로 둔다 — 가까운 색으로 칠하면 허위 사실이다.
+          fillColor: fill ?? undefined,
+          fillOpacity: fill === null ? ZONING_NEUTRAL_FILL_OPACITY : ZONING_FILL_OPACITY,
+          // 경계선은 채움색과 같은 색으로 한 톤 진하게 두지 않고 흰 계열로 갈라 준다 —
+          // 색이 값을 말하는 레이어라 선까지 색을 쓰면 인접 폴리곤의 색이 섞여 읽힌다.
+          strokeColor: colors.canvas,
+          strokeOpacity: ZONING_STROKE_OPACITY,
+          strokeWeight: ZONING_STROKE_WEIGHT,
+        };
+      },
+      zIndex: ZONING_Z_INDEX,
+      onClick: (feature) => setSelectedZoning(feature.properties),
+
+    });
   }, []);
 
   /**
@@ -367,6 +408,50 @@ export function MapView() {
   );
 
   /**
+   * 지금 뷰포트의 용도지역을 맞춘다 — 정비구역(syncZones)과 같은 idle 리듬·같은 규약이다.
+   *
+   * 다른 점은 줌을 벗어났을 때의 무게다. 용도지역은 서울 전역 8,312 폴리곤이라 z13 이하 bbox는
+   * 서버 상한(2,000)에 걸려 **화면 한가운데가 통째로 빠진다**. 채움 레이어의 구멍은 "이 자리는
+   * 용도지역 없음"이라는 허위 사실이므로, 반쯤 그리지 않고 안내로 바꾼다.
+   */
+  const syncZoning = useCallback(
+    async (map: naver.maps.Map) => {
+      const requestId = ++zoningRequestIdRef.current;
+      if (!zoningOnRef.current) {
+        hideZoning();
+        setZoningNotice('none');
+        return;
+      }
+      if (map.getZoom() < ZONING_MIN_ZOOM) {
+        hideZoning();
+        setZoningNotice('zoomIn');
+        return;
+      }
+      const bounds = map.getBounds();
+      const bbox = [
+        bounds.getSW().lng(),
+        bounds.getSW().lat(),
+        bounds.getNE().lng(),
+        bounds.getNE().lat(),
+      ].join(',');
+      try {
+        const response = await fetch(`/api/zones/zoning?bbox=${bbox}`);
+        if (!response.ok) throw new Error(`zoning 조회 실패: ${response.status}`);
+        const collection = parseZoningCollection(await response.json());
+        if (zoningRequestIdRef.current !== requestId) return;
+        drawZoning(map, collection.features);
+        setZoningBaseYm(collection.baseYm);
+        setZoningNotice(collection.truncated ? 'truncated' : 'none');
+      } catch {
+        if (zoningRequestIdRef.current !== requestId) return;
+        hideZoning();
+        setZoningNotice('error');
+      }
+    },
+    [drawZoning, hideZoning],
+  );
+
+  /**
    * 카메라가 움직이는 **동안** 카드를 마커에 붙여 둔다.
    *
    * 예전에는 idle에서만 카드를 닫았는데, idle은 카메라가 멈춘 뒤에 뜨기 때문에 드래그·줌 중에는
@@ -393,9 +478,10 @@ export function MapView() {
       debounceRef.current = setTimeout(() => {
         loadBbox(map.getBounds());
         void syncZones(map);
+        void syncZoning(map);
       }, IDLE_DEBOUNCE_MS);
     },
-    [loadBbox, syncZones],
+    [loadBbox, syncZones, syncZoning],
   );
 
   const handleScriptReady = useCallback(() => {
@@ -453,6 +539,9 @@ export function MapView() {
     cadastralRef.current = null;
     zoneSlotsRef.current.forEach((slot) => slot.polygon.setMap(null));
     zoneSlotsRef.current = [];
+    zoningSlotsRef.current.forEach((slot) => slot.polygon.setMap(null));
+    zoningSlotsRef.current = [];
+    zoningFeaturesRef.current = [];
     mapRef.current?.destroy();
     mapRef.current = null;
   }, []);
@@ -475,11 +564,23 @@ export function MapView() {
   // 토글은 idle을 기다리지 않고 그 자리에서 반영한다 — 눌렀는데 지도를 움직여야 나타나면 고장으로 보인다.
   useEffect(() => {
     zonesOnRef.current = zonesOn;
-    if (!zonesOn) setSelectedZone(null); // 레이어를 끄면 열려 있던 구역 카드도 함께 닫는다
+    if (!zonesOn) {
+      // 레이어를 끄면 열려 있던 구역 카드도 함께 닫는다 (병기한 용도지역도 같이)
+      setSelectedZone(null);
+      setZoneClickZoning(null);
+    }
     const map = mapRef.current;
     if (map === null) return;
     void syncZones(map);
   }, [zonesOn, syncZones]);
+
+  useEffect(() => {
+    zoningOnRef.current = zoningOn;
+    if (!zoningOn) setSelectedZoning(null);
+    const map = mapRef.current;
+    if (map === null) return;
+    void syncZoning(map);
+  }, [zoningOn, syncZoning]);
 
   // 물건 목록이 바뀔 때마다 기존 마커를 지우고 현재 줌에 맞춰 클러스터 버블 또는 개별 마커를 다시 그린다.
   useEffect(() => {
@@ -566,6 +667,10 @@ export function MapView() {
     setZonesOn(false);
     setZoneNotice('none');
     setSelectedZone(null);
+    setZoneClickZoning(null);
+    setZoningOn(false);
+    setZoningNotice('none');
+    setSelectedZoning(null);
     setScriptState('loading');
     setScriptRetryKey((key) => key + 1);
   }, [cleanupMap]);
@@ -631,10 +736,22 @@ export function MapView() {
             >
               정비구역
             </button>
+            <button
+              type="button"
+              className={zoningOn ? `${styles.layerToggle} ${styles.layerToggleOn}` : styles.layerToggle}
+              aria-pressed={zoningOn}
+              onClick={() => setZoningOn((on) => !on)}
+            >
+              용도지역
+            </button>
           </div>
 
           {zonesOn && zoneNotice !== 'none' ? (
             <p className={styles.layerNote}>{ZONE_NOTICE_TEXT[zoneNotice]}</p>
+          ) : null}
+
+          {zoningOn && zoningNotice !== 'none' ? (
+            <p className={styles.layerNote}>{ZONING_NOTICE_TEXT[zoningNotice]}</p>
           ) : null}
 
           {selectedZone ? (
@@ -659,8 +776,64 @@ export function MapView() {
                 )}
                 <span className={styles.zoneSpecsLabel}>겹치는 물건</span>
                 <span className={styles.zoneSpecsValue}>{selectedZone.itemCount}건</span>
+                {/* 겹친 지점은 구역 카드가 받으므로(zIndex 구역 > 면) 면 사실을 여기 한 줄로 남긴다.
+                    용도지역 레이어를 켜 둔 동안에만 값이 있다 — 없는 줄은 아예 그리지 않는다. */}
+                {zoneClickZoning ? (
+                  <>
+                    <span className={styles.zoneSpecsLabel}>이 자리 용도지역</span>
+                    <span className={styles.zoneSpecsValue}>{zoningDisplayName(zoneClickZoning)}</span>
+                  </>
+                ) : null}
               </div>
             </div>
+          ) : null}
+
+          {selectedZoning ? (
+            <div className={styles.zoneCard}>
+              <div className={styles.zoneCardHead}>
+                {/* 버킷 이름표가 아니라 원문 명칭이다 — "(7층이하)" 같은 고시 세부가 원문에만 있다 */}
+                <p className={styles.zoneName}>{zoningDisplayName(selectedZoning)}</p>
+                <button
+                  type="button"
+                  className={styles.zoneClose}
+                  onClick={() => setSelectedZoning(null)}
+                  aria-label="용도지역 정보 닫기"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className={styles.zoneSpecs}>
+                <span className={styles.zoneSpecsLabel}>용도지역 코드</span>
+                <span className={styles.zoneSpecsValue}>
+                  {selectedZoning.sclasCl ?? selectedZoning.mlsfcCl ?? '정보 없음'}
+                </span>
+              </div>
+              {zoningBaseYm ? (
+                <p className={styles.zoneCardSource}>{zoningSourceNote([zoningBaseYm])}</p>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* 범례 — 코로플레스는 범례 없이 읽을 수 없다. 좌측은 물건 패널이 차지하고 우상단은 지도 SDK
+          기본 컨트롤 영역이라 우하단이 유일하게 안전한 코너다 (기획 12 §3.3). */}
+      {scriptState === 'ready' && zoningOn && zoningNotice !== 'zoomIn' ? (
+        <div className={styles.legend}>
+          <p className={styles.legendTitle}>주거지역 세분</p>
+          {ZONING_LEGEND.map((entry) => (
+            <div key={entry.bucket} className={styles.legendRow}>
+              <span className={styles.legendSwatch} style={{ backgroundColor: entry.fill }} />
+              <span className={styles.legendLabel}>{entry.label}</span>
+            </div>
+          ))}
+          <div className={styles.legendRow}>
+            {/* 그 밖·미분류는 색을 주지 않는다 — 모르는 값을 가까운 색으로 칠하면 허위 사실이 된다 */}
+            <span className={`${styles.legendSwatch} ${styles.legendSwatchNeutral}`} />
+            <span className={styles.legendLabel}>그 밖의 용도지역</span>
+          </div>
+          {zoningBaseYm ? (
+            <p className={styles.legendSource}>{zoningSourceNote([zoningBaseYm])}</p>
           ) : null}
         </div>
       ) : null}

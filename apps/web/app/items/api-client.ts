@@ -2,6 +2,7 @@
 import { cache } from 'react';
 import type { Affordability } from './affordability';
 import type { DongBuildingAge } from './building-age';
+import type { ItemZoningDistrict } from './zoning';
 import type { ItemKey } from './item-id';
 import type { NoticeAnalysis } from './notice-analysis';
 import type { AuctionItemPhoto } from './photo';
@@ -72,6 +73,21 @@ export async function fetchDongBuildingAge(key: ItemKey): Promise<DongBuildingAg
     throw new Error(`동 노후도 조회 실패: ${response.status}`);
   }
   return (await response.json()) as DongBuildingAge;
+}
+
+/**
+ * 물건 자리의 용도지역("몇 종 지역"). 좌표가 없거나 공간조인 전이면 404이며 빈 배열로 돌려준다 —
+ * 화면은 섹션을 그리지 않는다. 여러 건이 정상이다: 원천이 같은 자리의 옛 고시·재고시 폴리곤을
+ * 함께 담아 물건의 10.6%가 다중 매치다(마이그레이션 022 주석).
+ */
+export async function fetchItemZoning(key: ItemKey): Promise<ItemZoningDistrict[]> {
+  const url = `${API_BASE_URL}/zones/zoning/${encodeURIComponent(key.courtOfficeCode)}/${encodeURIComponent(key.caseNo)}/${encodeURIComponent(key.itemNo)}`;
+  const response = await fetch(url, { cache: 'no-store' });
+  if (response.status === 404) return [];
+  if (!response.ok) {
+    throw new Error(`물건 용도지역 조회 실패: ${response.status}`);
+  }
+  return (await response.json()) as ItemZoningDistrict[];
 }
 
 /**
