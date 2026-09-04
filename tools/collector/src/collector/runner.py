@@ -141,6 +141,8 @@ class DailyRepository(
 
     def count_unmasked_tenant_names(self) -> int: ...
 
+    def recompute_spatial_joins(self) -> int: ...
+
 
 @dataclass(frozen=True)
 class CollectionTarget:
@@ -1207,6 +1209,20 @@ def run_daily(
     except Exception as exc:
         stage_failures += 1
         logger.warning("daily_masking_failed run_id=%s error=%s", run_id, exc)
+
+    # 6단계 — 공간조인 재계산: 1단계가 새로 넣은 물건을 법정동·정비구역·용도지역에 붙인다.
+    # 여기 없으면 화면이 조용히 비어 있다 — 실측(2026-09-04) 신규 64건이 좌표를 갖고도 조인이
+    # 없어 지도 용도지역·상세 노후도가 안 나왔다. 수동 CLI(zone_join)로만 돌던 것을 배치에 넣는다.
+    # 마스킹과 같은 이유로 맨 뒤이자 법원 요청 밖이다. 파생물이라 재계산이 곧 복구이므로
+    # 실패해도 다음 회차가 같은 일을 다시 한다 (07 오염 복구 ④).
+    try:
+        unmatched = repository.recompute_spatial_joins()
+        # 미배정은 오류가 아니다 — 경계 데이터가 서울만이라 서울 밖 물건은 원래 안 붙는다.
+        # 그래도 세어 두면 이 숫자가 갑자기 뛸 때(좌표 오염·경계 재적재 실패) 알아챌 수 있다.
+        logger.info("daily_spatial_join run_id=%s dong_unmatched=%s", run_id, unmatched)
+    except Exception as exc:
+        stage_failures += 1
+        logger.warning("daily_spatial_join_failed run_id=%s error=%s", run_id, exc)
 
     summary = DailySummary(
         requests_total=counting.requests,

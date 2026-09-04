@@ -11,6 +11,7 @@ from psycopg.types.json import Jsonb
 
 from collector.court_parser import AuctionItem, CasePhoto, ItemNotice, SaleResult
 from collector.repository import UpsertResult
+from collector.zone_join import recompute_dong, recompute_zone, recompute_zoning
 
 logger = logging.getLogger(__name__)
 
@@ -257,6 +258,20 @@ class PostgresAuctionRepository:
                     "SELECT count(*) FROM auction_item_notice_tenant WHERE tenant_name IS NOT NULL"
                 )
                 return int(cur.fetchone()[0])
+
+    def recompute_spatial_joins(self) -> int:
+        """물건 좌표를 법정동·정비구역·용도지역 경계에 다시 붙이고, 동 미배정 물건 수를 돌려준다.
+
+        셋을 한 트랜잭션에서 같은 시점의 경계로 계산한다 — 나눠 커밋하면 화면이 한동안 서로 다른
+        시점의 경계를 섞어 말한다. 조인은 파생물이라 실패해도 되돌아가고 다음 회차가 복구한다.
+
+        읽는 것은 auction_item이고 쓰는 것은 조인 표뿐이라, 같은 회차의 물건 쓰기와 다투지 않는다.
+        """
+        with psycopg.connect(self._database_url) as conn:
+            dong = recompute_dong(conn)
+            recompute_zone(conn)
+            recompute_zoning(conn)
+        return dong.unmatched
 
     def find_cases_missing_photos(
         self, court_office_code: str | None = None

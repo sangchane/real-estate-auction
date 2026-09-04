@@ -118,6 +118,9 @@ class FakeDailyRepository:
     def count_unmasked_tenant_names(self):
         return self._notice_repo.count_unmasked_tenant_names()
 
+    def recompute_spatial_joins(self):
+        return self._notice_repo.recompute_spatial_joins()
+
     def find_items_pending_sale_result(self):
         return self._sale.find_items_pending_sale_result()
 
@@ -564,6 +567,64 @@ def test_daily_keeps_tenant_names_while_case_is_open():
     _run(FakeDailyClient({court: pages}), repository, document_reader=reader)
 
     assert repository.count_unmasked_tenant_names() > 0
+
+
+def _messages(caplog) -> str:
+    return "\n".join(record.getMessage() for record in caplog.records)
+
+
+def test_daily_recomputes_spatial_joins(caplog):
+    """신규 물건을 경계에 붙이는 단계가 회차마다 돈다.
+
+    실측(2026-09-04): 이 단계가 없어서 신규 64건이 좌표를 갖고도 조인이 없었고, 지도 용도지역과
+    상세 노후도가 조용히 비어 있었다. 수동 CLI로만 돌던 것을 배치에 넣은 이유다.
+    """
+    caplog.set_level(logging.INFO)
+    court = "B000210"
+    pages = [_search_response([_row(court, "2024타경1")], page_no=1, total="1")]
+
+    _run(FakeDailyClient({court: pages}), FakeDailyRepository(), document_reader=FakeDocumentReader())
+
+    assert "daily_spatial_join" in _messages(caplog)
+
+
+def test_daily_spatial_join_runs_even_when_earlier_stage_fails(caplog):
+    """앞 단계가 죽어도 조인은 돈다 — 이미 들어온 물건이 화면에서 빠지지 않게."""
+    caplog.set_level(logging.INFO)
+    court = "B000210"
+
+    class BrokenPhotoRepository(FakeDailyRepository):
+        def find_cases_missing_photos(self, court_office_code=None):
+            raise RuntimeError("db down")
+
+    repository = BrokenPhotoRepository()
+    client = FakeDailyClient(
+        {court: [_search_response([_row(court, "2024타경1")], page_no=1, total="1")]}
+    )
+
+    summary = _run(client, repository, document_reader=FakeDocumentReader())
+
+    assert summary.stage_failures == 1  # 사진 단계만 실패
+    assert "daily_spatial_join" in _messages(caplog)
+
+
+def test_daily_survives_spatial_join_failure(caplog):
+    """조인이 실패해도 회차는 끝난다 — 파생물이라 다음 회차가 다시 계산하면 복구된다."""
+    caplog.set_level(logging.INFO)
+    court = "B000210"
+
+    class BrokenJoinRepository(FakeDailyRepository):
+        def recompute_spatial_joins(self):
+            raise RuntimeError("postgis down")
+
+    summary = _run(
+        FakeDailyClient({court: [_search_response([_row(court, "2024타경1")], page_no=1, total="1")]}),
+        BrokenJoinRepository(),
+        document_reader=FakeDocumentReader(),
+    )
+
+    assert summary.stage_failures == 1
+    assert "daily_spatial_join_failed" in _messages(caplog)
 
 
 def test_daily_masking_runs_even_when_earlier_stage_fails(caplog):

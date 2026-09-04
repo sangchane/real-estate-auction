@@ -123,6 +123,15 @@ class InMemoryNoticeRepository:
             if tenant.tenant_name is not None
         )
 
+    def recompute_spatial_joins(self) -> int:
+        """인메모리 저장소는 좌표·경계를 모델링하지 않아 붙일 것이 없다 (PostGIS 전용 단계).
+
+        0을 돌려주는 것은 "미배정 없음"이 아니라 "셀 물건이 없음"이다 — 공간조인의 실제 동작은
+        test_zone_join.py가 PostGIS에 대고 검증한다. 여기서 흉내내면 테스트가 실제와 다른 것을
+        검증하게 된다 (find_item_keys_needing_pdf_rescan과 같은 판단).
+        """
+        return 0
+
 
 class InMemoryPhotoRepository:
     """사진 멱등 저장 규칙(같은 사건·출처·순번 중복 금지)을 검증하기 위한 테스트용 저장소."""
