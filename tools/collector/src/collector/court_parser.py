@@ -297,6 +297,8 @@ class ItemNotice:
 _BASELINE_DATE_PATTERN = re.compile(
     r"(?<!\d)(\d{4})\s*\.\s*(\d{1,2})\s*\.\s*(\d{1,2})(?!\d)"
 )
+# Court auction records can contain old rights, but years before 1900 in observed
+# responses have been truncation/OCR artifacts (for example 0214 from 20214).
 _MIN_PLAUSIBLE_DATE_YEAR = 1900
 
 # 인수권리 란 키워드 → 판정값. 한 서술에 여러 권리가 같이 적힐 수 있어 심각한 순서로 먼저

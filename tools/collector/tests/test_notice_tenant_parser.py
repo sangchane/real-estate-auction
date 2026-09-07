@@ -252,6 +252,16 @@ def test_implausibly_old_tenant_date_becomes_null(raw):
     assert _parse_date(raw) is None
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [("1899.12.31", None), ("1900.01.01", date(1900, 1, 1))],
+)
+def test_tenant_date_applies_minimum_plausible_year_boundary(raw, expected):
+    from collector.notice_tenant_parser import _parse_date
+
+    assert _parse_date(raw) == expected
+
+
 def test_rowspan_tenant_shares_one_seq():
     """같은 점유자가 정보출처별로 두 행에 걸치면 성명은 병합 셀에 한 번만 렌더된다.
 

@@ -107,6 +107,20 @@ def test_parse_item_notice_ignores_malformed_five_digit_year_in_baseline():
     assert notice.baseline_date is None
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [("1899.12.31. 근저당", None), ("1900.01.01. 근저당", date(1900, 1, 1))],
+)
+def test_parse_item_notice_applies_minimum_plausible_baseline_year(raw, expected):
+    payload = _load()
+    payload["data"]["dma_result"]["dspslGdsDxdyInfo"]["tprtyRnkHypthcStngDts"] = raw
+
+    notice = _parse(payload)
+
+    assert notice is not None
+    assert notice.baseline_date == expected
+
+
 def test_parse_item_notice_survives_missing_optional_blocks():
     payload = _load()
     del payload["data"]["dma_result"]["dstrtDemnInfo"]

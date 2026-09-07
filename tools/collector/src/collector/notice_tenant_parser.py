@@ -78,6 +78,8 @@ _HEADER_KEYWORDS = (
 _TABLE_END_MARKERS = ("<비고>", "비고란", "※")
 
 _DATE_PATTERN = re.compile(r"(?<!\d)(\d{4})\s*\.\s*(\d{1,2})\s*\.\s*(\d{1,2})(?!\d)")
+# Tenant dates before 1900 are not plausible here; observed values such as 0022
+# and 0217 were malformed source/PDF parses and must remain unknown instead.
 _MIN_PLAUSIBLE_DATE_YEAR = 1900
 # 콤마가 있으면 천단위로 정확히 끊겨 있어야 금액 하나로 읽는다. 셀 안에서 줄바꿈된 금액 두 개는
 # 구분자 없이 이어붙는데(실측 2025타경51589 `220,000,000231,000,000`), 예전 `^[0-9][0-9,]*$`는
