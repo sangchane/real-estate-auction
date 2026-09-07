@@ -294,7 +294,10 @@ class ItemNotice:
 
 
 # 최선순위 설정 원문의 날짜 표기 — "2008.07.09", "2022.1.12.", "2024. 12. 11." 모두 실측된 형태다
-_BASELINE_DATE_PATTERN = re.compile(r"(\d{4})\s*\.\s*(\d{1,2})\s*\.\s*(\d{1,2})")
+_BASELINE_DATE_PATTERN = re.compile(
+    r"(?<!\d)(\d{4})\s*\.\s*(\d{1,2})\s*\.\s*(\d{1,2})(?!\d)"
+)
+_MIN_PLAUSIBLE_DATE_YEAR = 1900
 
 # 인수권리 란 키워드 → 판정값. 한 서술에 여러 권리가 같이 적힐 수 있어 심각한 순서로 먼저
 # 판정한다 — 가등기(소유권 상실 위험) > 주택임차권등기 > 지상권. "주택임차권 등기"처럼
@@ -420,6 +423,8 @@ def _baseline_date(baseline_raw: str | None) -> date | None:
         return None
     parsed = []
     for year, month, day in _BASELINE_DATE_PATTERN.findall(baseline_raw):
+        if int(year) < _MIN_PLAUSIBLE_DATE_YEAR:
+            continue
         try:
             parsed.append(date(int(year), int(month), int(day)))
         except ValueError:

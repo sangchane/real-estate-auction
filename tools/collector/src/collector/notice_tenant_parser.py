@@ -77,7 +77,8 @@ _HEADER_KEYWORDS = (
 # 표 아래 경계 — 명세서 양식에서 표 다음에 반드시 오는 란
 _TABLE_END_MARKERS = ("<비고>", "비고란", "※")
 
-_DATE_PATTERN = re.compile(r"(\d{4})\s*\.\s*(\d{1,2})\s*\.\s*(\d{1,2})")
+_DATE_PATTERN = re.compile(r"(?<!\d)(\d{4})\s*\.\s*(\d{1,2})\s*\.\s*(\d{1,2})(?!\d)")
+_MIN_PLAUSIBLE_DATE_YEAR = 1900
 # 콤마가 있으면 천단위로 정확히 끊겨 있어야 금액 하나로 읽는다. 셀 안에서 줄바꿈된 금액 두 개는
 # 구분자 없이 이어붙는데(실측 2025타경51589 `220,000,000231,000,000`), 예전 `^[0-9][0-9,]*$`는
 # 이것을 18자리 수 하나로 읽어 220조를 저장했다. 콤마 위치가 어긋나면 아래 다중 금액 경로로 보낸다.
@@ -561,6 +562,8 @@ def _parse_date(text: str | None) -> date | None:
         return None
     match = _DATE_PATTERN.search(text)
     if match is None:
+        return None
+    if int(match.group(1)) < _MIN_PLAUSIBLE_DATE_YEAR:
         return None
     try:
         return date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
