@@ -245,6 +245,13 @@ def test_unknown_fixed_date_becomes_null():
     assert _parse_date(None) is None
 
 
+@pytest.mark.parametrize("raw", ["0022.07.20", "0217.04.24"])
+def test_implausibly_old_tenant_date_becomes_null(raw):
+    from collector.notice_tenant_parser import _parse_date
+
+    assert _parse_date(raw) is None
+
+
 def test_rowspan_tenant_shares_one_seq():
     """같은 점유자가 정보출처별로 두 행에 걸치면 성명은 병합 셀에 한 번만 렌더된다.
 

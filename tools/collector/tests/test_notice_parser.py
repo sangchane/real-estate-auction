@@ -95,6 +95,18 @@ def test_parse_item_notice_ignores_impossible_date_in_baseline():
     assert notice.baseline_date == date(2024, 3, 1)
 
 
+def test_parse_item_notice_ignores_malformed_five_digit_year_in_baseline():
+    payload = _load()
+    dxdy = payload["data"]["dma_result"]["dspslGdsDxdyInfo"]
+    dxdy["tprtyRnkHypthcStngDts"] = "20214.10.01. 근저당권(1, 2)"
+
+    notice = _parse(payload)
+
+    assert notice is not None
+    assert notice.baseline_raw == "20214.10.01. 근저당권(1, 2)"
+    assert notice.baseline_date is None
+
+
 def test_parse_item_notice_survives_missing_optional_blocks():
     payload = _load()
     del payload["data"]["dma_result"]["dstrtDemnInfo"]
