@@ -109,7 +109,11 @@ def test_parse_item_notice_ignores_malformed_five_digit_year_in_baseline():
 
 @pytest.mark.parametrize(
     ("raw", "expected"),
-    [("1899.12.31. 근저당", None), ("1900.01.01. 근저당", date(1900, 1, 1))],
+    [
+        ("1899.12.31. 근저당", None),
+        ("1900.01.01. 근저당", date(1900, 1, 1)),
+        ("9999.12.31. 근저당", None),
+    ],
 )
 def test_parse_item_notice_applies_minimum_plausible_baseline_year(raw, expected):
     payload = _load()

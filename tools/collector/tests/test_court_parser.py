@@ -54,7 +54,12 @@ def test_parse_search_page_rejects_missing_natural_key():
 
 @pytest.mark.parametrize(
     ("raw", "expected"),
-    [("02170424", None), ("18991231", None), ("19000101", date(1900, 1, 1))],
+    [
+        ("02170424", None),
+        ("18991231", None),
+        ("19000101", date(1900, 1, 1)),
+        ("99991231", None),
+    ],
 )
 def test_compact_date_applies_minimum_plausible_year(raw, expected):
     assert _date_from_yyyymmdd(raw) == expected

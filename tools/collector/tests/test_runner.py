@@ -67,7 +67,12 @@ def test_build_search_payload_pages_without_total_count_requery():
 
 @pytest.mark.parametrize(
     ("raw", "expected"),
-    [("02170424", None), ("18991231", None), ("19000101", date(1900, 1, 1))],
+    [
+        ("02170424", None),
+        ("18991231", None),
+        ("19000101", date(1900, 1, 1)),
+        ("99991231", None),
+    ],
 )
 def test_notice_bid_date_applies_minimum_plausible_year(raw, expected):
     assert notice_bid_date({"maeGiil": raw}) == expected

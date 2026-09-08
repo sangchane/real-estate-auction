@@ -254,12 +254,37 @@ def test_implausibly_old_tenant_date_becomes_null(raw):
 
 @pytest.mark.parametrize(
     ("raw", "expected"),
-    [("1899.12.31", None), ("1900.01.01", date(1900, 1, 1))],
+    [
+        ("1899.12.31", None),
+        ("1900.01.01", date(1900, 1, 1)),
+        ("9999.12.31", None),
+    ],
 )
 def test_tenant_date_applies_minimum_plausible_year_boundary(raw, expected):
     from collector.notice_tenant_parser import _parse_date
 
     assert _parse_date(raw) == expected
+
+
+def test_malformed_five_digit_date_still_starts_a_new_tenant_row():
+    from collector.notice_tenant_parser import _anchors_from
+
+    def date_line(text: str, y: float) -> list[dict[str, object]]:
+        return [
+            {
+                "char": char,
+                "x1": 382 + index * 5,
+                "x2": 386 + index * 5,
+                "y1": y - 4,
+                "y2": y + 4,
+                "at_line_end": False,
+            }
+            for index, char in enumerate(text)
+        ]
+
+    region = date_line("2024.01.01", 100.0) + date_line("20214.10.01", 89.0)
+
+    assert _anchors_from(region, ("move_in_date",), date_starts_row=True) == [100.0, 89.0]
 
 
 def test_rowspan_tenant_shares_one_seq():
