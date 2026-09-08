@@ -1,9 +1,10 @@
 import json
+from datetime import date
 from pathlib import Path
 
 import pytest
 
-from collector.court_parser import CourtPayloadError, parse_search_page
+from collector.court_parser import CourtPayloadError, _date_from_yyyymmdd, parse_search_page
 
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "court_search_page.json"
@@ -49,3 +50,20 @@ def test_parse_search_page_rejects_missing_natural_key():
 
     with pytest.raises(CourtPayloadError, match="boCd"):
         parse_search_page(payload)
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [("02170424", None), ("18991231", None), ("19000101", date(1900, 1, 1))],
+)
+def test_compact_date_applies_minimum_plausible_year(raw, expected):
+    assert _date_from_yyyymmdd(raw) == expected
+
+
+def test_search_page_does_not_format_implausible_bid_datetime():
+    payload = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
+    payload["data"]["dlt_srchResult"][0]["maeGiil"] = "02170424"
+
+    page = parse_search_page(payload)
+
+    assert page.items[0].bid_datetime is None

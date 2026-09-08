@@ -3,9 +3,11 @@ import logging
 from datetime import date
 from pathlib import Path
 
+import pytest
+
 from collector.court_parser import parse_search_page
 from collector.repository import InMemoryAuctionRepository
-from collector.runner import CollectionTarget, build_search_payload, run_collection
+from collector.runner import CollectionTarget, build_search_payload, notice_bid_date, run_collection
 
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "court_search_page.json"
@@ -61,3 +63,11 @@ def test_build_search_payload_pages_without_total_count_requery():
     assert payload["dma_pageInfo"]["totalYn"] == "N"
     assert payload["dma_srchGdsDtlSrchInfo"]["bidBgngYmd"] == "20260708"
     assert payload["dma_srchGdsDtlSrchInfo"]["bidEndYmd"] == "20260722"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [("02170424", None), ("18991231", None), ("19000101", date(1900, 1, 1))],
+)
+def test_notice_bid_date_applies_minimum_plausible_year(raw, expected):
+    assert notice_bid_date({"maeGiil": raw}) == expected
