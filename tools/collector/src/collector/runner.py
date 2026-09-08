@@ -18,6 +18,7 @@ from collector.court_parser import (
     parse_photo_page,
     parse_sale_result_page,
 )
+from collector.date_utils import parse_yyyymmdd
 from collector.notice_document_client import (
     NoticeDocumentRef,
     NoticeDocumentSession,
@@ -305,13 +306,7 @@ def notice_bid_date(row: dict[str, Any]) -> date | None:
     명세서가 어느 기일 것인지 표시하는 데 쓴다. 값이 없으면 None이고, 그때는 daily가 기일 비교를
     포기하고 예전처럼 "명세서 유무"로만 판단한다 — 매일 다시 받는 것보다 낫다.
     """
-    raw = str(row.get("maeGiil") or "")
-    if len(raw) != 8 or not raw.isdigit():
-        return None
-    try:
-        return date(int(raw[0:4]), int(raw[4:6]), int(raw[6:8]))
-    except ValueError:
-        return None
+    return parse_yyyymmdd(row.get("maeGiil"))
 
 
 def build_case_search_payload(court_office_code: str, case_no: str) -> dict[str, Any]:

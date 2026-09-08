@@ -7,6 +7,8 @@ from dataclasses import dataclass, replace
 from datetime import date
 from typing import Any
 
+from collector.date_utils import parse_yyyymmdd, plausible_date
+
 from collector.geo import katec_to_wgs84
 from collector.notice_tenant_parser import NoticeTenant
 
@@ -297,9 +299,6 @@ class ItemNotice:
 _BASELINE_DATE_PATTERN = re.compile(
     r"(?<!\d)(\d{4})\s*\.\s*(\d{1,2})\s*\.\s*(\d{1,2})(?!\d)"
 )
-# Court auction records can contain old rights, but years before 1900 in observed
-# responses have been truncation/OCR artifacts (for example 0214 from 20214).
-_MIN_PLAUSIBLE_DATE_YEAR = 1900
 
 # 인수권리 란 키워드 → 판정값. 한 서술에 여러 권리가 같이 적힐 수 있어 심각한 순서로 먼저
 # 판정한다 — 가등기(소유권 상실 위험) > 주택임차권등기 > 지상권. "주택임차권 등기"처럼
@@ -425,12 +424,9 @@ def _baseline_date(baseline_raw: str | None) -> date | None:
         return None
     parsed = []
     for year, month, day in _BASELINE_DATE_PATTERN.findall(baseline_raw):
-        if int(year) < _MIN_PLAUSIBLE_DATE_YEAR:
-            continue
-        try:
-            parsed.append(date(int(year), int(month), int(day)))
-        except ValueError:
-            continue
+        parsed_date = plausible_date(int(year), int(month), int(day))
+        if parsed_date is not None:
+            parsed.append(parsed_date)
     return min(parsed) if parsed else None
 
 
@@ -582,13 +578,7 @@ def _detect_image_type(image: bytes) -> str | None:
 
 
 def _date_from_yyyymmdd(value: Any) -> date | None:
-    text = _optional_str(value)
-    if text is None or len(text) != 8 or not text.isdigit():
-        return None
-    try:
-        return date(int(text[0:4]), int(text[4:6]), int(text[6:8]))
-    except ValueError:
-        return None
+    return parse_yyyymmdd(value)
 
 
 def _amount_or_none(value: Any) -> int | None:
@@ -603,10 +593,10 @@ def _combine_bid_datetime(row: dict[str, Any]) -> str | None:
     법원 값은 한국 표준시(KST, UTC+9) 기준이라 +09:00을 명시한다 — 오프셋 없이 저장하면 DB 세션
     시간대(UTC)로 해석돼 실제보다 9시간 늦은 시각으로 조회되는 버그가 있었다.
     """
-    date_part = _optional_str(row.get("maeGiil"))
-    if date_part is None or len(date_part) != 8:
+    parsed_date = parse_yyyymmdd(row.get("maeGiil"))
+    if parsed_date is None:
         return None
-    formatted_date = f"{date_part[0:4]}-{date_part[4:6]}-{date_part[6:8]}"
+    formatted_date = parsed_date.isoformat()
 
     time_part = _optional_str(row.get("maeHh1"))
     if time_part is not None and len(time_part) == 4:

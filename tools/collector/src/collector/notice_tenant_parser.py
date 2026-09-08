@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
+from collector.date_utils import plausible_date
+
 
 # 점유자 표 컬럼의 x 경계 (실측 — 대법원 매각물건명세서 표준 양식, 좌표 단위는 PDF 포인트).
 # 셀 값이 컬럼 폭보다 길면 같은 셀 안에서 여러 줄로 나뉘므로 x로 컬럼을, y로 행을 정한다.
@@ -78,9 +80,9 @@ _HEADER_KEYWORDS = (
 _TABLE_END_MARKERS = ("<비고>", "비고란", "※")
 
 _DATE_PATTERN = re.compile(r"(?<!\d)(\d{4})\s*\.\s*(\d{1,2})\s*\.\s*(\d{1,2})(?!\d)")
-# Tenant dates before 1900 are not plausible here; observed values such as 0022
-# and 0217 were malformed source/PDF parses and must remain unknown instead.
-_MIN_PLAUSIBLE_DATE_YEAR = 1900
+# Row detection is intentionally more permissive than semantic parsing. A malformed
+# five-digit year still marks a new PDF table row, while _DATE_PATTERN rejects its value.
+_ROW_DATE_PATTERN = re.compile(r"(?<!\d)\d{4,5}\s*\.\s*\d{1,2}\s*\.\s*\d{1,2}(?!\d)")
 # 콤마가 있으면 천단위로 정확히 끊겨 있어야 금액 하나로 읽는다. 셀 안에서 줄바꿈된 금액 두 개는
 # 구분자 없이 이어붙는데(실측 2025타경51589 `220,000,000231,000,000`), 예전 `^[0-9][0-9,]*$`는
 # 이것을 18자리 수 하나로 읽어 220조를 저장했다. 콤마 위치가 어긋나면 아래 다중 금액 경로로 보낸다.
@@ -457,7 +459,7 @@ def _anchors_from(
         clusters: list[list[float]] = []
         for y in sorted(lines, reverse=True):
             text = "".join(char for _, char in sorted(lines[y]))
-            has_date = _DATE_PATTERN.search(text) is not None
+            has_date = _ROW_DATE_PATTERN.search(text) is not None
             starts_row = (
                 not clusters
                 or clusters[-1][-1] - y > _CELL_WRAP_GAP_MAX
@@ -565,12 +567,7 @@ def _parse_date(text: str | None) -> date | None:
     match = _DATE_PATTERN.search(text)
     if match is None:
         return None
-    if int(match.group(1)) < _MIN_PLAUSIBLE_DATE_YEAR:
-        return None
-    try:
-        return date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
-    except ValueError:
-        return None
+    return plausible_date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
 
 
 def _parse_amount(text: str | None) -> int | None:
