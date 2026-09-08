@@ -23,6 +23,6 @@ def plausible_date(year: int, month: int, day: int) -> date | None:
 
 def parse_yyyymmdd(value: Any) -> date | None:
     text = str(value).strip() if value is not None else ""
-    if len(text) != 8 or not text.isdigit():
+    if len(text) != 8 or not text.isascii() or not text.isdigit():
         return None
     return plausible_date(int(text[0:4]), int(text[4:6]), int(text[6:8]))
