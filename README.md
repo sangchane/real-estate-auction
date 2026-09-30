@@ -97,7 +97,9 @@ cd tools/collector
 지운 시각은 `masked_at`에 남아 NF-03("72시간 내 100%")의 증거가 된다.
 
 스케줄 등록은 `run_daily.cmd`(루트 `.env`에서 `DATABASE_URL`을 읽어 `daily --with-tenants` 실행,
-로그는 `tools/collector/daily.log`)를 걸어둔다. 이 머신에는 **3시간 간격**으로 등록돼 있다.
+로그는 `tools/collector/daily.log`)를 걸어둔다. 이 머신에는 **밤에만 3시간 간격**(18:30 · 21:30 · 00:30 · 03:30 · 06:30)으로
+등록돼 있다(2026-09-30 — 낮 09~18시에는 Docker 를 띄우지 않는다). 명세서 열람 창은 기일 1주 전~기일 **날짜 단위**라
+시각을 가리지 않는다. 스크립트가 Docker 를 직접 켰으면 끝날 때 `docker desktop stop` 으로 다시 끈다.
 
 **3시간 간격인 이유**: 대상 법원을 서울 5곳으로 늘리면서 물건이 469 → 약 2,500건이 됐다.
 명세서는 물건당 5요청 이상이고 법원이 조용히 빈 응답으로 degrade하는 벽이 실측 180건 근처라
@@ -111,7 +113,7 @@ cd tools/collector
 ```powershell
 $dir = "<repo>\tools\collector"
 $action  = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c `"$dir\run_daily.cmd`"" -WorkingDirectory $dir
-$trigger = New-ScheduledTaskTrigger -Once -At '00:00' -RepetitionInterval (New-TimeSpan -Hours 3)
+$trigger = '18:30','21:30','00:30','03:30','06:30' | ForEach-Object { New-ScheduledTaskTrigger -Daily -At $_ }
 Register-ScheduledTask -TaskName 'AuctionCollectorDaily' -Action $action -Trigger $trigger -Force
 
 schtasks /query /tn "AuctionCollectorDaily" /fo LIST /v   # 다음 실행 시각·마지막 결과 확인

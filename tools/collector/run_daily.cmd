@@ -40,7 +40,10 @@ REM Sleep uses ping because timeout.exe needs an interactive console and dies un
 REM Task Scheduler.
 docker info >nul 2>&1
 if not errorlevel 1 goto engine_ready
+REM Remember that this run started Docker Desktop, so :finish can stop it again and the
+REM machine is not left running Docker all day. If it was already up, leave it alone.
 start "" "C:\Program Files\Docker\Docker\Docker Desktop.exe"
+set "STARTED_DOCKER=1"
 set /a engine_tries=0
 :wait_engine
 docker info >nul 2>&1
@@ -48,7 +51,8 @@ if not errorlevel 1 goto engine_ready
 set /a engine_tries+=1
 if %engine_tries% geq 36 (
   echo run_daily: docker engine did not start within 3 minutes 1>&2
-  exit /b 3
+  set "RC=3"
+  goto finish
 )
 ping -n 6 127.0.0.1 >nul
 goto wait_engine
@@ -63,7 +67,8 @@ if not errorlevel 1 goto db_ready
 set /a db_tries+=1
 if %db_tries% geq 24 (
   echo run_daily: auction-db did not become healthy within 2 minutes 1>&2
-  exit /b 3
+  set "RC=3"
+  goto finish
 )
 ping -n 6 127.0.0.1 >nul
 goto wait_db
@@ -81,7 +86,8 @@ if not errorlevel 1 goto net_ready
 set /a net_tries+=1
 if %net_tries% geq 24 (
   echo run_daily: courtauction did not resolve within 2 minutes 1>&2
-  exit /b 4
+  set "RC=4"
+  goto finish
 )
 ping -n 6 127.0.0.1 >nul
 goto wait_net
@@ -94,4 +100,8 @@ REM notices, ~128 minutes, ~1800 requests. Without caps a run took 300-380 minut
 REM the next slot was skipped entirely - 8 runs a day dropped to 3-6 (WP-11 section 4-33).
 REM --notice-limit is a total; --rescan-limit is per court.
 ".venv\Scripts\python.exe" -m collector daily --with-tenants --notice-limit 250 --rescan-limit 40 >> "%HERE%daily.log" 2>&1
-exit /b %ERRORLEVEL%
+set "RC=%ERRORLEVEL%"
+
+:finish
+if defined STARTED_DOCKER docker desktop stop >nul 2>&1
+exit /b %RC%
